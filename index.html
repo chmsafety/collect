@@ -576,9 +576,17 @@ header{top:0}
 
     <div class="settab on" id="s-sites">
       <div class="note i">연락처의 뒤 4자리가 곧 그 사업장의 비밀번호입니다. 목록에서는 가려서 보여주며, 전체 번호를 확인하면 감사 로그에 기록됩니다.</div>
+      <div class="inline" style="margin-bottom:.7rem">
+        <input type="text" id="siteSearch" placeholder="사업장 · 담당자 검색" oninput="renderSites()" style="max-width:260px">
+        <label class="chk"><input type="checkbox" id="showInactive" onchange="chkTog(this);loadSites()"> 사용중지 포함</label>
+        <span class="sub" id="siteCount"></span>
+        <button class="btn pri" style="margin-left:auto" onclick="openSite(null)">+ 사업장 추가</button>
+      </div>
       <div class="tbl-wrap">
-        <table><thead><tr><th>코드</th><th>사업장명</th><th style="width:24%">소속 그룹</th><th>담당자</th><th>연락처</th><th></th></tr></thead>
-        <tbody id="setSites"></tbody></table>
+        <table><thead><tr>
+          <th>코드</th><th style="width:18%">사업장명</th><th style="width:20%">소속 그룹</th>
+          <th>담당자</th><th>연락처</th><th>상태</th><th style="width:15%"></th>
+        </tr></thead><tbody id="setSites"></tbody></table>
       </div>
     </div>
 
@@ -732,8 +740,8 @@ header{top:0}
               </div>
             </div>
           </div>
-          <label class="chk on" id="nNotifySw" onclick="this.classList.toggle('on')" style="margin-top:.3rem">
-            <input type="checkbox" checked style="pointer-events:none"> 만들고 최초 안내 문자 발송</label>
+          <label class="chk on" style="margin-top:.3rem">
+            <input type="checkbox" id="nNotify" checked onchange="chkTog(this)"> 만들고 최초 안내 문자 발송</label>
         </div>
       </div>
     </div>
@@ -761,6 +769,37 @@ header{top:0}
   </div>
 </div>
 
+<div class="overlay" id="ovSite" onclick="if(event.target===this)closeOv('ovSite')">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-h"><h3 id="smTitle">사업장 추가</h3><button class="x" onclick="closeOv('ovSite')">✕</button></div>
+    <div class="modal-b">
+      <div class="field" id="smCodeF"><label>사업장 코드</label>
+        <input type="text" id="smCode" readonly style="background:var(--surface2)">
+        <div class="hint">코드는 바꿀 수 없습니다. 제출 기록이 이 코드로 묶여 있습니다.</div></div>
+      <div class="field"><label>사업장명 <span class="req">*</span></label>
+        <input type="text" id="smName" placeholder="예) 강남타워">
+        <div class="hint">안전보건점검 시스템과 <b>똑같은 표기</b>여야 두 시스템이 연결됩니다.</div></div>
+      <div class="field"><label>지역</label>
+        <input type="text" id="smRegion" placeholder="예) 수도권" list="regionList">
+        <datalist id="regionList"></datalist>
+        <div class="hint">채우면 같은 지역끼리 그룹이 자동으로 만들어집니다.</div></div>
+      <div class="field"><label>담당자</label><input type="text" id="smManager" placeholder="예) 김현수"></div>
+      <div class="field"><label>연락처</label>
+        <input type="text" id="smPhone" placeholder="010-1234-5678">
+        <div class="hint"><b>뒤 4자리가 이 사업장의 로그인 비밀번호입니다.</b> 비워두면 로그인할 수 없습니다.</div></div>
+      <div class="field"><label>부담당자 연락처 <span style="font-weight:400;color:var(--muted)">(선택)</span></label>
+        <input type="text" id="smSub" placeholder="여러 명이면 쉼표로 구분">
+        <div class="hint">독촉 문자가 이분들에게도 함께 갑니다. 로그인 비밀번호는 위 연락처 기준입니다.</div></div>
+      <div class="note w hidden" id="smWarn"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn dan hidden" id="smDelete" style="margin-right:auto" onclick="delSite()">삭제</button>
+      <button class="btn" onclick="closeOv('ovSite')">취소</button>
+      <button class="btn pri" id="smSave" onclick="saveSiteModal()">저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="ovRedo" onclick="if(event.target===this)closeOv('ovRedo')">
   <div class="modal" style="max-width:460px">
     <div class="modal-h"><h3>재제출 요청</h3><button class="x" onclick="closeOv('ovRedo')">✕</button></div>
@@ -770,8 +809,8 @@ header{top:0}
       <div class="field"><label>반려 사유 <span class="req">*</span></label>
         <textarea id="rdReason" placeholder="무엇을 어떻게 고쳐야 하는지 구체적으로 적어주세요"></textarea>
         <div class="hint">이 내용이 사업장 화면과 문자에 그대로 전달됩니다.</div></div>
-      <label class="chk on" id="rdNotify" onclick="this.classList.toggle('on')">
-        <input type="checkbox" checked style="pointer-events:none"> 문자로 즉시 알림</label>
+      <label class="chk on">
+        <input type="checkbox" id="rdNotify" checked onchange="chkTog(this)"> 문자로 즉시 알림</label>
     </div>
     <div class="modal-f"><button class="btn" onclick="closeOv('ovRedo')">취소</button>
       <button class="btn dan" onclick="sendRedo()">재제출 요청</button></div>
@@ -798,9 +837,13 @@ header{top:0}
 
 <script>
 /* ══════════════════════════════════════════════════════════════
-   설정 — 배포한 Apps Script 웹앱 URL 을 여기에 붙여넣으세요
+   ★ 여기만 고치면 됩니다 ★
+   아래 따옴표 안의 PASTE_YOUR_WEB_APP_URL_HERE 를 지우고
+   배포한 Apps Script 웹 앱 URL 을 붙여넣으세요. 따옴표는 남겨두세요.
+
+   예) var API_URL = 'https://script.google.com/macros/s/AKfycb.../exec';
    ══════════════════════════════════════════════════════════════ */
-var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mBokSBOlGUJ2QCp7JSdrrmzTnadaCd_57L520Yocp3g6/exec';
+var API_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
 var TOKEN = '', ROLE = '', ME = null;
@@ -820,7 +863,7 @@ function toast(msg, kind){
 
 function api(action, params){
   if(API_URL.indexOf('PASTE_') === 0){
-    return Promise.reject(new Error('API_URL 이 설정되지 않았습니다. index.html 맨 아래 API_URL 에 웹앱 주소를 넣어주세요.'));
+    return Promise.reject(new Error('API_URL 이 설정되지 않았습니다.\n\nindex.html 에서 Ctrl+F 로 PASTE 를 찾아, 그 자리에 Apps Script 웹 앱 URL 을 넣어주세요.'));
   }
   var body = Object.assign({ action: action, token: TOKEN }, params || {});
   return fetch(API_URL, {
@@ -1119,7 +1162,7 @@ function showFiles(code){
         '<span class="fn">'+esc(f.name)+'</span><span class="fs">'+kb(f.size)+'</span>'+
         '<a class="btn sm" target="_blank" rel="noopener" href="https://drive.google.com/file/d/'+esc(f.driveId)+'/view">열기</a></div>';
     }).join('') + '</div>'+
-    '<div class="hint" style="margin-top:.7rem">파일은 Google Drive 에서 열립니다. 이 계정으로 로그인되어 있어야 합니다. 전체를 한 번에 받으려면 ZIP 다운로드를 쓰세요.</div>';
+    '<div class="hint" style="margin-top:.7rem">파일은 Google Drive 에서 열립니다. <b>"액세스 권한 필요"</b> 가 뜨면 브라우저에 로그인된 Google 계정이 자료 폴더에 공유되어 있지 않은 것입니다. Apps Script 에서 <b>shareDriveFolder</b> 를 실행하세요.</div>';
   openOv('ovFiles');
 }
 
@@ -1180,7 +1223,7 @@ function sendRedo(){
   var reason=$('rdReason').value.trim();
   if(!reason){ toast('반려 사유를 입력해 주세요.','err'); return; }
   api('collections.redo',{id:DETAIL.id,siteCode:redoCode,reason:reason,
-      notify:$('rdNotify').classList.contains('on')}).then(function(r){
+      notify:$('rdNotify').checked}).then(function(r){
     closeOv('ovRedo'); toast('재제출을 요청했습니다.'+(r.sms&&r.sms.sent?' 문자 '+r.sms.sent+'건 발송.':''),'ok');
     openDetail(DETAIL.id);
   }).catch(function(e){ toast(e.message,'err'); });
@@ -1205,13 +1248,16 @@ function openNew(){
   nTypeV='reg'; nType('reg');
   nApplied={all:1}; applyN();
   $('nPoints').innerHTML=SMS_POINTS.map(function(p){
-    return '<label class="chk'+(nPoints[p]?' on':'')+'" onclick="togPoint(this,\''+p+'\')">'+
-           '<input type="checkbox"'+(nPoints[p]?' checked':'')+' style="pointer-events:none"> '+p+'</label>';
+    return '<label class="chk'+(nPoints[p]?' on':'')+'">'+
+           '<input type="checkbox"'+(nPoints[p]?' checked':'')+
+           ' onchange="togPoint(this,\''+p+'\')"> '+p+'</label>';
   }).join('');
   openOv('ovNew');
 }
-function togPoint(el,p){ nPoints[p]=nPoints[p]?0:1; el.classList.toggle('on', !!nPoints[p]);
-  el.querySelector('input').checked=!!nPoints[p]; }
+/* label 안에 input 이 있으면 클릭 한 번에 이벤트가 두 번 발생해 서로 상쇄됩니다.
+   그래서 label 의 onclick 이 아니라 input 의 onchange 로 상태를 읽습니다. */
+function chkTog(input){ input.parentNode.classList.toggle('on', input.checked); }
+function togPoint(input,p){ nPoints[p]=input.checked?1:0; chkTog(input); }
 function nType(t){ nTypeV=t; $('nReg').classList.toggle('on',t==='reg'); $('nAdhoc').classList.toggle('on',t!=='reg');
   $('nCycleF').classList.toggle('hidden',t!=='reg'); }
 function nMergeTog(){ var on=$('nMergeSw').classList.toggle('on'); $('nMergeOpt').classList.toggle('hidden',!on); }
@@ -1281,7 +1327,7 @@ function createCol(){
     smsPoints:SMS_POINTS.filter(function(p){return nPoints[p];}),
     mergeOn:$('nMergeSw').classList.contains('on'),
     mergeSheet:$('nSheet').value, mergeHeaderRow:$('nHead').value, mergeStartRow:$('nStart').value,
-    sendFirstNotice:$('nNotifySw').classList.contains('on')
+    sendFirstNotice:$('nNotify').checked
   };
   if(nApplied.all) col.groupKeys=[];
 
@@ -1411,17 +1457,114 @@ function loadSmsHist(){
 
 /* ── 설정 ─────────────────────────────────────────────────────── */
 function loadSites(){
-  api('sites.list',{}).then(function(r){
+  var inc = $('showInactive') && $('showInactive').checked;
+  return api('sites.list',{includeInactive:inc}).then(function(r){
     SITES=r.list||[];
-    $('setSites').innerHTML=SITES.map(function(s){
-      return '<tr><td class="num">'+esc(s.code)+'</td><td><b>'+esc(s.name)+'</b></td>'+
-        '<td><span class="gtags"><span class="gtag rg">'+esc(s.region||'')+'</span>'+
-          (s.groups||[]).map(function(g){return '<span class="gtag">'+esc(g)+'</span>';}).join('')+'</span></td>'+
-        '<td>'+esc(s.manager||'')+'</td>'+
-        '<td class="num mask" id="ph-'+esc(s.code)+'">'+esc(s.phone||'')+
-          ' <button class="lockbtn" onclick="reveal(\''+esc(s.code)+'\')" title="전체 번호 보기">🔒</button></td>'+
-        '<td><button class="btn sm" onclick="unlockSite(\''+esc(s.code)+'\')">잠금 해제</button></td></tr>';
-    }).join('') || '<tr><td colspan="6" class="empty">등록된 사업장이 없습니다.<br>Apps Script 에서 importSites() 를 실행하세요.</td></tr>';
+    var rg={}; SITES.forEach(function(s){ if(s.region) rg[s.region]=1; });
+    if($('regionList')) $('regionList').innerHTML=Object.keys(rg).map(function(x){
+      return '<option value="'+esc(x)+'">'; }).join('');
+    renderSites();
+  }).catch(function(e){ toast(e.message,'err'); });
+}
+
+function renderSites(){
+  var q=(($('siteSearch')||{}).value||'').trim();
+  var list=SITES.filter(function(s){
+    return !q || s.name.indexOf(q)>=0 || s.code.indexOf(q)>=0 || String(s.manager||'').indexOf(q)>=0;
+  });
+  var noPhone=SITES.filter(function(s){ return s.active && !s.hasPhone; }).length;
+  $('siteCount').innerHTML='전체 <b class="num">'+SITES.length+'</b>곳'+
+    (noPhone? ' · <b style="color:var(--danger)">연락처 없음 '+noPhone+'곳</b>':'');
+
+  $('setSites').innerHTML = list.length ? list.map(function(s){
+    return '<tr'+(s.active?'':' style="opacity:.55;background:var(--surface2)"')+'>'+
+      '<td class="num">'+esc(s.code)+'</td>'+
+      '<td><b>'+esc(s.name)+'</b></td>'+
+      '<td><span class="gtags">'+(s.region?'<span class="gtag rg">'+esc(s.region)+'</span>':'')+
+        (s.groups||[]).map(function(g){return '<span class="gtag">'+esc(g)+'</span>';}).join('')+'</span></td>'+
+      '<td>'+esc(s.manager||'<span class="sub">—</span>')+'</td>'+
+      '<td class="num mask" id="ph-'+esc(s.code)+'">'+
+        (s.hasPhone
+          ? esc(s.phone)+' <button class="lockbtn" onclick="reveal(\''+esc(s.code)+'\')" title="전체 번호 보기">🔒</button>'
+          : '<span class="badge b-dan">연락처 없음</span>')+'</td>'+
+      '<td>'+(s.active
+          ? (s.locked? '<span class="badge b-warn">로그인 잠김</span>':'<span class="badge b-ok">사용</span>')
+          : '<span class="badge b-mut">사용중지</span>')+'</td>'+
+      '<td><div class="btn-row">'+
+        '<button class="btn sm" onclick="openSite(\''+esc(s.code)+'\')">수정</button>'+
+        (s.locked? '<button class="btn sm" onclick="unlockSite(\''+esc(s.code)+'\')">잠금해제</button>':'')+
+        (s.active
+          ? '<button class="btn sm" onclick="toggleSite(\''+esc(s.code)+'\',false)">중지</button>'
+          : '<button class="btn sm" onclick="toggleSite(\''+esc(s.code)+'\',true)">재사용</button>')+
+      '</div></td></tr>';
+  }).join('') : '<tr><td colspan="7" class="empty">'+
+      (q? '검색 결과가 없습니다.' :
+          '등록된 사업장이 없습니다.<br>Apps Script 에서 importSites() 를 실행하거나 사업장 추가를 누르세요.')+'</td></tr>';
+}
+
+var smCode=null;
+function openSite(code){
+  smCode=code;
+  var s=SITES.filter(function(x){return x.code===code;})[0];
+  $('smTitle').textContent = s? '사업장 수정' : '사업장 추가';
+  $('smCodeF').classList.toggle('hidden', !s);
+  $('smDelete').classList.toggle('hidden', !s);
+  $('smWarn').classList.add('hidden');
+  $('smCode').value   = s? s.code : '';
+  $('smName').value   = s? s.name : '';
+  $('smRegion').value = s? (s.region||'') : '';
+  $('smManager').value= s? (s.manager||'') : '';
+  $('smPhone').value  = '';
+  $('smSub').value    = s? (s.subContacts||'') : '';
+  if(s){
+    $('smPhone').placeholder = s.hasPhone? '현재 '+s.phone+' — 바꿀 때만 입력' : '010-1234-5678';
+    if(!s.hasPhone){
+      $('smWarn').textContent='이 사업장은 연락처가 없어 담당자가 로그인할 수 없습니다.';
+      $('smWarn').classList.remove('hidden');
+    }
+  } else {
+    $('smPhone').placeholder='010-1234-5678';
+  }
+  openOv('ovSite');
+  setTimeout(function(){ $('smName').focus(); },100);
+}
+
+function saveSiteModal(){
+  var name=$('smName').value.trim();
+  if(!name){ toast('사업장명을 입력해 주세요.','err'); return; }
+  var site={ name:name, region:$('smRegion').value, manager:$('smManager').value,
+             subContacts:$('smSub').value };
+  var phone=$('smPhone').value.trim();
+
+  var b=$('smSave'); busy(b,true,'저장 중');
+  var p;
+  if(smCode){
+    if(phone) site.phone=phone;              // 비워두면 기존 번호 유지
+    p=api('sites.save',{siteCode:smCode,patch:site});
+  }else{
+    site.phone=phone;
+    p=api('sites.create',{site:site});
+  }
+  p.then(function(r){
+    busy(b,false); closeOv('ovSite');
+    toast((smCode?'수정했습니다.':'추가했습니다. 코드 '+r.code)+(r.msg? '\n'+r.msg:''),'ok');
+    loadSites().then(function(){ if(GROUPS.length) return api('groups.list',{}).then(function(g){ GROUPS=g.list||[]; }); });
+  }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
+}
+
+function toggleSite(code,active){
+  var s=SITES.filter(function(x){return x.code===code;})[0];
+  if(!active && !confirm('"'+s.name+'" 을(를) 사용중지할까요?\n\n앞으로 만드는 취합의 대상에서 빠집니다.\n과거 제출 기록은 그대로 남습니다.')) return;
+  api('sites.active',{siteCode:code,active:active}).then(function(r){
+    toast(r.msg,'ok'); loadSites();
+  }).catch(function(e){ toast(e.message,'err'); });
+}
+
+function delSite(){
+  var s=SITES.filter(function(x){return x.code===smCode;})[0];
+  if(!confirm('"'+s.name+'" 을(를) 완전히 삭제할까요?\n\n되돌릴 수 없습니다.\n제출 기록이 있는 사업장은 삭제되지 않고 안내가 나옵니다.')) return;
+  api('sites.delete',{siteCode:smCode}).then(function(r){
+    closeOv('ovSite'); toast(r.msg,'ok'); loadSites();
   }).catch(function(e){ toast(e.message,'err'); });
 }
 function reveal(code){
