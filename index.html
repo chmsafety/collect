@@ -378,9 +378,10 @@ body.shownotes .notes{display:block}
 header{top:0}
 .hd-top{height:62px;padding:.5rem 1.6rem;gap:1.2rem}
 .logo{font-size:1.06rem;font-weight:800;letter-spacing:-.01em;gap:.6rem}
-.logo-mark{background:#fff;color:var(--accent);font-weight:900;font-size:.9rem;
-  letter-spacing:.06em;padding:.3rem .52rem;border-radius:7px;line-height:1;
-  box-shadow:0 1px 3px rgba(0,0,0,.18);flex-shrink:0}
+.logo-mark{background:#fff;padding:.3rem .5rem;border-radius:8px;line-height:0;
+  box-shadow:0 1px 3px rgba(0,0,0,.18);flex-shrink:0;display:inline-flex;align-items:center}
+.chm{height:22px;width:51.6px;display:block}      /* 원본 비율 2.34 : 1 */
+.chm-lg{height:38px;width:89px;margin:0 auto}
 nav{gap:.3rem}
 .nav-btn{padding:.55rem 1.25rem;border-radius:8px;font-size:.95rem;font-weight:700;letter-spacing:-.01em}
 .nav-btn.active{box-shadow:0 2px 6px rgba(0,0,0,.15)}
@@ -400,9 +401,7 @@ nav{gap:.3rem}
 .login-box{width:100%;max-width:400px}
 .login-logo{text-align:center;margin-bottom:1.2rem}
 .login-logo .ic{line-height:1;margin-bottom:.5rem}
-.login-mark{display:inline-block;background:var(--accent);color:#fff;font-weight:900;
-  font-size:1.05rem;letter-spacing:.08em;padding:.42rem .7rem;border-radius:10px;
-  box-shadow:0 4px 12px rgba(30,64,175,.28)}
+
 .login-logo .t{font-size:1.1rem;font-weight:800;margin-top:.3rem}
 .login-logo .s{font-size:.76rem;color:var(--text2)}
 .toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%);z-index:500;
@@ -433,11 +432,31 @@ nav{gap:.3rem}
 </head>
 <body>
 
+<!-- CHM 로고 (원본 CI 파일에서 추출한 벡터) -->
+<svg width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
+<symbol id="chmlogo" viewBox="0.240 26.987 56.333 24.108"><defs>
+<clipPath id="clip-0">
+<path clip-rule="nonzero" d="M 0.164062 31 L 20 31 L 20 51 L 0.164062 51 Z M 0.164062 31 "/>
+</clipPath>
+<clipPath id="clip-1">
+<path clip-rule="nonzero" d="M 37 31 L 56.222656 31 L 56.222656 51 L 37 51 Z M 37 31 "/>
+</clipPath>
+</defs>
+<g clip-path="url(#clip-0)">
+<path fill-rule="nonzero" fill="rgb(96.862793%, 57.647705%, 11.372375%)" fill-opacity="1" d="M 13.519531 41.023438 L 19.015625 41.171875 C 18.652344 44.136719 17.667969 46.429688 16.0625 48.042969 C 14.457031 49.664062 12.359375 50.46875 9.773438 50.46875 C 7.144531 50.46875 4.945312 49.550781 3.171875 47.714844 C 1.402344 45.875 0.519531 43.59375 0.519531 40.867188 C 0.519531 38.128906 1.421875 35.820312 3.226562 33.949219 C 5.03125 32.082031 7.257812 31.144531 9.902344 31.144531 C 12.503906 31.144531 14.675781 32.0625 16.417969 33.898438 C 17.625 35.167969 18.476562 36.933594 18.976562 39.207031 L 13.351562 39.59375 C 12.722656 37.582031 11.527344 36.574219 9.765625 36.574219 C 8.644531 36.574219 7.71875 36.980469 6.988281 37.789062 C 6.257812 38.597656 5.894531 39.628906 5.894531 40.875 C 5.894531 42.078125 6.253906 43.074219 6.96875 43.863281 C 7.683594 44.648438 8.589844 45.042969 9.6875 45.042969 C 10.800781 45.042969 11.6875 44.695312 12.347656 44.003906 C 13.011719 43.308594 13.398438 42.320312 13.519531 41.023438 "/>
+</g>
+<path fill-rule="nonzero" fill="rgb(4.705811%, 69.412231%, 29.411316%)" fill-opacity="1" d="M 34.339844 50.011719 L 29.097656 50.011719 L 29.097656 31.601562 L 34.339844 31.601562 Z M 28.210938 38.1875 L 28.210938 43.054688 L 26.730469 43.054688 L 26.730469 50.011719 L 21.492188 50.011719 L 21.492188 31.601562 L 26.730469 31.601562 L 26.730469 38.1875 Z M 28.210938 38.1875 "/>
+<g clip-path="url(#clip-1)">
+<path fill-rule="nonzero" fill="rgb(55.2948%, 47.058105%, 18.431091%)" fill-opacity="1" d="M 37.488281 50.011719 L 37.488281 36.75 C 37.488281 35.101562 37.964844 33.757812 38.925781 32.714844 C 39.882812 31.667969 41.128906 31.144531 42.65625 31.144531 C 44.46875 31.144531 45.863281 32.015625 46.839844 33.75 C 47.433594 32.816406 48.070312 32.148438 48.75 31.746094 C 49.429688 31.347656 50.265625 31.144531 51.265625 31.144531 C 52.847656 31.144531 54.058594 31.667969 54.902344 32.710938 C 55.746094 33.757812 56.167969 35.257812 56.167969 37.222656 L 56.167969 50.011719 L 50.925781 50.011719 L 50.925781 38.046875 C 50.925781 37.453125 50.882812 37.058594 50.789062 36.863281 C 50.699219 36.671875 50.519531 36.574219 50.246094 36.574219 C 49.730469 36.574219 49.476562 37.03125 49.476562 37.949219 L 49.476562 50.011719 L 44.234375 50.011719 L 44.234375 38.046875 C 44.234375 37.460938 44.183594 37.070312 44.085938 36.871094 C 43.992188 36.675781 43.800781 36.574219 43.519531 36.574219 C 42.992188 36.574219 42.730469 37.066406 42.730469 38.046875 L 42.730469 50.011719 Z M 37.488281 50.011719 "/>
+</g>
+<path fill-rule="nonzero" fill="rgb(92.941284%, 10.980225%, 14.117432%)" fill-opacity="1" d="M 48.800781 28.792969 C 48.800781 29.894531 47.921875 30.785156 46.835938 30.785156 C 45.753906 30.785156 44.875 29.894531 44.875 28.792969 C 44.875 27.691406 45.753906 26.800781 46.835938 26.800781 C 47.921875 26.800781 48.800781 27.691406 48.800781 28.792969 "/></symbol>
+</svg>
+
 <!-- ══════════ 로그인 ══════════ -->
 <div id="loginPage">
   <div class="login-box">
     <div class="login-logo">
-      <div class="ic"><span class="login-mark">CHM</span></div>
+      <div class="ic"><svg class="chm chm-lg"><use href="#chmlogo"></use></svg></div>
       <div class="t">취합관리 시스템</div>
       <div class="s" id="loginSub">사업장 담당자 로그인</div>
     </div>
@@ -476,7 +495,7 @@ nav{gap:.3rem}
 <div id="hqApp" class="hidden">
 <header>
   <div class="hd-top">
-    <div class="logo"><span class="logo-mark">CHM</span> 취합관리 시스템</div>
+    <div class="logo"><span class="logo-mark"><svg class="chm"><use href="#chmlogo"></use></svg></span> 취합관리 시스템</div>
     <nav>
       <button class="nav-btn active" data-p="dash" onclick="go('dash')">대시보드</button>
       <button class="nav-btn" data-p="list" onclick="go('list')">취합관리</button>
@@ -662,7 +681,7 @@ nav{gap:.3rem}
 <div id="siteApp" class="hidden">
 <header>
   <div class="hd-top">
-    <div class="logo"><span class="logo-mark">CHM</span> 취합관리 시스템</div>
+    <div class="logo"><span class="logo-mark"><svg class="chm"><use href="#chmlogo"></use></svg></span> 취합관리 시스템</div>
     <nav>
       <button class="nav-btn active" data-p="my" onclick="goSite('my')">제출할 자료</button>
       <button class="nav-btn" data-p="status" onclick="goSite('status')">전체 현황</button>
@@ -909,7 +928,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-01b';
+var BUILD = '2026-09-01c';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
