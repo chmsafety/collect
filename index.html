@@ -849,7 +849,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-08-31b';
+var BUILD = '2026-08-31c';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -944,10 +944,11 @@ function doLogin(){
   }).catch(function(e){ busy(btn,false); loginError(e.message); });
 }
 
+var BOOTDATA=null;
 function startSession(token){
   TOKEN = token; store('tok', token);
-  return api('auth.me', {}).then(function(r){
-    ROLE = r.role; ME = r;
+  return api('boot', {}).then(function(r){
+    ROLE = r.role; ME = r; BOOTDATA = r;
     $('loginPage').classList.add('hidden');
     if(ROLE==='hq'){
       $('hqApp').classList.remove('hidden'); $('siteApp').classList.add('hidden');
@@ -1011,23 +1012,25 @@ function fillSiteSelect(){
 }
 
 /* ── 화면 전환 ────────────────────────────────────────────────── */
-function go(p){
+function go(p, noload){
   Array.prototype.forEach.call(document.querySelectorAll('#hqApp .page'), function(x){ x.classList.remove('on'); });
   var t=$('p-'+p); if(t) t.classList.add('on');
   Array.prototype.forEach.call(document.querySelectorAll('#hqApp .nav-btn'), function(b){
     b.classList.toggle('active', b.dataset.p===p); });
   window.scrollTo({top:0,behavior:'smooth'});
+  if(noload) return;
   if(p==='dash') loadDash();
   if(p==='list') loadList();
   if(p==='sms')  loadSms();
   if(p==='set')  loadSites();
 }
-function goSite(p){
+function goSite(p, noload){
   Array.prototype.forEach.call(document.querySelectorAll('#siteApp .page'), function(x){ x.classList.remove('on'); });
   var t=$('p-'+p); if(t) t.classList.add('on');
   Array.prototype.forEach.call(document.querySelectorAll('#siteApp .nav-btn'), function(b){
     b.classList.toggle('active', b.dataset.p===p); });
   window.scrollTo({top:0,behavior:'smooth'});
+  if(noload) return;
   if(p==='my') loadMy();
   if(p==='status') loadStatusList();
 }
@@ -1036,7 +1039,7 @@ function setTab(b, name){
   b.classList.add('on');
   Array.prototype.forEach.call(document.querySelectorAll('.settab'), function(x){ x.classList.remove('on'); });
   $('s-'+name).classList.add('on');
-  if(name==='sites') loadSites();
+  if(name==='sites'){ if(SITES.length) renderSites(); loadSites(); }
   if(name==='groups') loadGroups();
   if(name==='log') loadLog();
 }
@@ -1047,14 +1050,29 @@ function closeOv(id){ $(id).classList.remove('on'); }
 function bootHq(){
   $('dashDate').textContent = new Date().toLocaleDateString('ko-KR',
     {year:'numeric',month:'long',day:'numeric',weekday:'long'}) + ' 기준';
-  go('dash');
-  api('groups.list',{}).then(function(r){ GROUPS = r.list||[]; }).catch(function(){});
-  api('sites.list',{}).then(function(r){ SITES = r.list||[]; }).catch(function(){});
+
+  // 로그인 응답에 대시보드·사업장·그룹이 함께 들어 있습니다. 추가 요청 없이 바로 그립니다.
+  if(BOOTDATA && BOOTDATA.dashboard){
+    SITES  = BOOTDATA.sites  || [];
+    GROUPS = BOOTDATA.groups || [];
+    go('dash', true);
+    paintDash(BOOTDATA.dashboard);
+    BOOTDATA = null;
+  } else {
+    go('dash');
+    api('sites.list',{}).then(function(r){ SITES=r.list||[]; }).catch(function(){});
+    api('groups.list',{}).then(function(r){ GROUPS=r.list||[]; }).catch(function(){});
+  }
 }
 
 function loadDash(){
-  api('dashboard',{}).then(function(r){
-    var d = r.data, t = d.tiles;
+  api('dashboard',{}).then(function(r){ paintDash(r.data); })
+    .catch(function(e){ toast(e.message,'err'); });
+}
+
+function paintDash(d){
+  (function(){
+    var t = d.tiles;
     $('dashTiles').innerHTML =
       tile('', '진행 중 취합', t.ing, '건', '') +
       tile('w', '이번 주 마감', t.weekDue, '건', '기한 7일 이내') +
@@ -1075,7 +1093,7 @@ function loadDash(){
       return '<div><span class="num" style="color:var(--muted)">'+esc(String(l.at).slice(5,16))+'</span> '+
              esc(l.actor)+' · '+esc(l.action)+' <span class="sub">'+esc(l.detail||l.target||'')+'</span></div>';
     }).join('') || '<div class="sub">기록이 없습니다.</div>';
-  }).catch(function(e){ toast(e.message,'err'); });
+  })();
 }
 
 function tile(cls,label,val,unit,sub){
@@ -1682,12 +1700,26 @@ function loadLog(){
 
 /* ══════════ 사업장 ══════════ */
 var MY=[], CUR=null;
-function bootSite(){ goSite('my'); }
+function bootSite(){
+  if(BOOTDATA && BOOTDATA.my){
+    MY = BOOTDATA.my;
+    goSite('my', true);
+    paintMy();
+    BOOTDATA = null;
+  } else {
+    goSite('my');
+  }
+}
 
 function loadMy(){
   $('myBody').innerHTML='<tr><td colspan="6" class="loading"><span class="spin d"></span></td></tr>';
   api('my.list',{}).then(function(r){
-    MY=r.list||[];
+    MY=r.list||[]; paintMy();
+  }).catch(function(e){ $('myBody').innerHTML='<tr><td colspan="6" class="empty">'+esc(e.message)+'</td></tr>'; });
+}
+
+function paintMy(){
+  (function(){
     var open=MY.filter(function(m){ return !m.closed && m.status!=='ok' && m.status!=='late'; });
     var soon=open.length? open[0].dday : null;
     var doneCnt=MY.filter(function(m){return m.status==='ok'||m.status==='late';}).length;
@@ -1712,7 +1744,7 @@ function loadMy(){
               (m.status==='redo'?'다시 올리기':'자료 올리기')+' →</button>'
             : '<span class="sub">마감</span>')+'</td></tr>';
     }).join('') : '<tr><td colspan="6" class="empty">제출할 자료가 없습니다.</td></tr>';
-  }).catch(function(e){ $('myBody').innerHTML='<tr><td colspan="6" class="empty">'+esc(e.message)+'</td></tr>'; });
+  })();
 }
 
 function openUpload(id){
