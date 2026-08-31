@@ -559,8 +559,8 @@ nav{gap:.3rem}
     </div>
     <div class="tbl-wrap">
       <table><thead><tr>
-        <th style="width:32%">취합명</th><th>구분</th><th>기한</th><th>대상</th>
-        <th style="width:18%">제출 현황</th><th>상태</th><th></th>
+        <th style="width:28%">취합명</th><th>구분</th><th>기한</th><th>대상</th>
+        <th style="width:16%">제출 현황</th><th>만든 사람</th><th>상태</th><th></th>
       </tr></thead><tbody id="listBody"></tbody></table>
     </div>
   </div>
@@ -584,6 +584,7 @@ nav{gap:.3rem}
 
   <div class="page" id="p-sms">
     <div class="page-head"><div><h1>문자 발송</h1><p>미제출 사업장 독촉 및 안내</p></div></div>
+    <div class="note i hidden" id="smsNoOwn">본인이 만든 취합에만 문자를 보낼 수 있습니다. 진행 중인 본인 취합이 없습니다.</div>
     <div class="note w hidden" id="smsDry">지금은 <b>발송 시험 모드</b>입니다. 문구·대상·비용은 그대로 기록되지만 실제 문자는 나가지 않습니다. 발신번호 사전등록이 끝나면 <code>_Config</code> 의 <code>SMS_PROVIDER</code> 를 바꿔주세요.</div>
     <div class="grid g2">
       <div class="card">
@@ -631,7 +632,11 @@ nav{gap:.3rem}
 
   <div class="page" id="p-set">
     <div class="page-head"><div><h1>설정</h1><p>사업장·그룹 관리</p></div></div>
-    <div class="ftabs">
+    <div class="note w hidden" id="setNoPerm">
+      <b>마스터 담당자만 쓸 수 있는 화면입니다.</b><br>
+      사업장·그룹·담당자 계정 관리는 마스터 권한이 필요합니다. 필요하시면 마스터에게 요청해 주세요.
+    </div>
+    <div class="ftabs" id="setTabs">
       <button class="ftab on" onclick="setTab(this,'sites')">사업장 · 담당자</button>
       <button class="ftab" onclick="setTab(this,'groups')">사업장 그룹</button>
       <button class="ftab" onclick="setTab(this,'hq')">본사 담당자</button>
@@ -679,7 +684,7 @@ nav{gap:.3rem}
         <button class="btn pri" style="margin-left:auto" onclick="openHq(null)">+ 담당자 추가</button>
       </div>
       <div class="tbl-wrap">
-        <table><thead><tr><th style="width:28%">아이디</th><th>비밀번호</th><th>상태</th><th style="width:24%"></th></tr></thead>
+        <table><thead><tr><th style="width:26%">아이디</th><th>비밀번호</th><th>상태</th><th style="width:34%"></th></tr></thead>
         <tbody id="hqBody"></tbody></table>
       </div>
       <div class="hint">아이디는 대소문자를 구분합니다. 비밀번호는 저장할 때 암호화되며 다시 볼 수 없습니다. 잊었으면 새로 설정해 주세요.</div>
@@ -947,11 +952,11 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-01f';
+var BUILD = '2026-09-01h';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
-var TOKEN = '', ROLE = '', ME = null;
+var TOKEN = '', ROLE = '', ME = null, MASTER = false;
 var SITES = [], GROUPS = [], COLS = [];
 
 function $(id){ return document.getElementById(id); }
@@ -1053,8 +1058,11 @@ function startSession(token, preloaded){
     $('loginPage').classList.add('hidden');
     if(ROLE==='hq'){
       $('hqApp').classList.remove('hidden'); $('siteApp').classList.add('hidden');
-      $('hqName').textContent = r.user.id;
+      MASTER = !!r.master;
+      $('hqName').innerHTML = esc(r.user.id) +
+        (MASTER? ' <span class="badge" style="background:rgba(255,255,255,.22);border-color:transparent;color:#fff">마스터</span>' : '');
       $('hqInitial').textContent = String(r.user.id).charAt(0).toUpperCase();
+      applyRole();
       bootHq();
     } else {
       $('siteApp').classList.remove('hidden'); $('hqApp').classList.add('hidden');
@@ -1173,6 +1181,21 @@ function openOv(id){ $(id).classList.add('on'); }
 function closeOv(id){ $(id).classList.remove('on'); }
 
 /* ══════════ 본사 ══════════ */
+/* 마스터가 아니면 관리 기능을 화면에서 감춥니다.
+   서버에서도 막고 있으니 화면은 혼란을 줄이는 역할입니다. */
+function applyRole(){
+  Array.prototype.forEach.call(document.querySelectorAll('#p-set .ftab'), function(b){
+    var t=b.textContent;
+    var adminOnly = t.indexOf('사업장')>=0 || t.indexOf('본사 담당자')>=0 || t.indexOf('감사')>=0;
+    b.classList.toggle('hidden', adminOnly && !MASTER);
+  });
+  $('setNoPerm').classList.toggle('hidden', MASTER);
+  $('setTabs').classList.toggle('hidden', !MASTER);
+  if(!MASTER){
+    Array.prototype.forEach.call(document.querySelectorAll('.settab'), function(x){ x.classList.remove('on'); });
+  }
+}
+
 function bootHq(){
   $('dashDate').textContent = new Date().toLocaleDateString('ko-KR',
     {year:'numeric',month:'long',day:'numeric',weekday:'long'}) + ' 기준';
@@ -1234,7 +1257,7 @@ function listFilter(b,f){
   b.classList.add('on'); listF=f; loadList();
 }
 function loadList(){
-  $('listBody').innerHTML='<tr><td colspan="7" class="loading"><span class="spin d"></span></td></tr>';
+  $('listBody').innerHTML='<tr><td colspan="8" class="loading"><span class="spin d"></span></td></tr>';
   api('collections.list',{filter:listF}).then(function(r){
     COLS = r.list||[];
     $('listSub').textContent = '전체 '+COLS.length+'건';
@@ -1245,10 +1268,11 @@ function loadList(){
         '<td class="num">'+esc(c.dueAt)+'<div>'+fmtDday(c.dday)+'</div></td>'+
         '<td class="num">'+c.total+'곳<div class="sub" style="font-family:\'Noto Sans KR\',sans-serif">'+esc(c.targetSummary||'')+'</div></td>'+
         '<td>'+rateBar(c.done,c.total)+'</td>'+
+        '<td class="sub">'+esc(c.createdBy||'')+(c.canDownload?'':' <span class="badge b-mut">조회만</span>')+'</td>'+
         '<td>'+(c.status==='ing'?'<span class="badge b-ok">진행 중</span>':'<span class="badge b-mut">마감</span>')+'</td>'+
         '<td><button class="btn sm" onclick="event.stopPropagation();openDetail(\''+c.id+'\')">상세</button></td></tr>';
-    }).join('') : '<tr><td colspan="7" class="empty">해당하는 취합이 없습니다.</td></tr>';
-  }).catch(function(e){ $('listBody').innerHTML='<tr><td colspan="7" class="empty">'+esc(e.message)+'</td></tr>'; });
+    }).join('') : '<tr><td colspan="8" class="empty">해당하는 취합이 없습니다.</td></tr>';
+  }).catch(function(e){ $('listBody').innerHTML='<tr><td colspan="8" class="empty">'+esc(e.message)+'</td></tr>'; });
 }
 
 var DETAIL=null, dFilter='all';
@@ -1264,14 +1288,19 @@ function renderDetail(){
   var d=DETAIL, c=d.counts;
   $('dTitle').textContent=d.name;
   $('dSub').innerHTML = (d.type==='reg'?'정기취합':'수시취합') + ' · 기한 ' + esc(d.dueAt) +
-    ' ' + fmtDday(d.dday) + ' · 대상 <b>' + esc(d.targetSummary||'') + '</b>';
+    ' ' + fmtDday(d.dday) + ' · 대상 <b>' + esc(d.targetSummary||'') + '</b>' +
+    (d.createdBy? ' · 만든 사람 <b>'+esc(d.createdBy)+'</b>':'') +
+    (d.canDownload? '' :
+      '<div class="note w" style="margin:.6rem 0 0;padding:.5rem .7rem;display:inline-block">'+
+      '다른 담당자가 만든 취합입니다. 진행 상황은 볼 수 있지만 <b>자료 다운로드와 문자 발송은 만든 사람과 마스터만</b> 할 수 있습니다.</div>');
 
-  $('dActions').innerHTML =
-    (d.mergeOn? '<button class="btn" id="btnMerge" onclick="runMerge()">📊 엑셀 병합</button>':'') +
-    '<button class="btn" onclick="downloadCsv()">현황표</button>' +
-    '<button class="btn" id="btnZip" onclick="runZip()">🗂 ZIP 다운로드</button>' +
-    '<button class="btn pri" onclick="gotoSmsFor()">✉ 미제출 문자발송</button>' +
-    '<button class="btn dan" onclick="delCol()">삭제</button>';
+  $('dActions').innerHTML = d.canDownload
+    ? ((d.mergeOn? '<button class="btn" id="btnMerge" onclick="runMerge()">📊 엑셀 병합</button>':'') +
+       '<button class="btn" onclick="downloadCsv()">현황표</button>' +
+       '<button class="btn" id="btnZip" onclick="runZip()">🗂 ZIP 다운로드</button>' +
+       '<button class="btn pri" onclick="gotoSmsFor()">✉ 미제출 문자발송</button>' +
+       '<button class="btn dan" onclick="delCol()">삭제</button>')
+    : '<span class="badge b-mut" style="padding:.4rem .7rem">조회만 가능</span>';
 
   $('dTiles').innerHTML =
     tile('o','제출 완료', c.done, '/'+c.total, '제출률 '+(c.total?Math.round(c.done/c.total*100):0)+'%') +
@@ -1296,8 +1325,9 @@ function renderDetail(){
       '<td class="num">'+(s.submittedAt||'<span class="sub">—</span>')+'</td>'+
       '<td class="num">'+(s.fileCount?s.fileCount+'개':'<span class="sub">—</span>')+'</td>'+
       '<td><div class="btn-row">'+
-        (s.fileCount? '<button class="btn sm" onclick="showFiles(\''+s.code+'\')">파일</button>'+
-                      '<button class="btn sm" onclick="openRedo(\''+s.code+'\',\''+esc(s.name)+'\')">재제출</button>' : '')+
+        (s.fileCount && DETAIL.canDownload
+          ? '<button class="btn sm" onclick="showFiles(\''+s.code+'\')">파일</button>'+
+            '<button class="btn sm" onclick="openRedo(\''+s.code+'\',\''+esc(s.name)+'\')">재제출</button>' : '')+
       '</div></td></tr>';
   }).join('') : '<tr><td colspan="6" class="empty">해당하는 사업장이 없습니다.</td></tr>';
 }
@@ -1515,10 +1545,11 @@ var SMS_DEFAULT='[안전관리팀] {사업장명} 담당자님, {취합명} 제�
 function loadSms(){
   if(!$('smsText').value) $('smsText').value=SMS_DEFAULT;
   api('collections.list',{filter:'ing'}).then(function(r){
-    COLS=r.list||[];
+    COLS=(r.list||[]).filter(function(c){ return c.canDownload; });
     $('smsCol').innerHTML=COLS.map(function(c){
       return '<option value="'+esc(c.id)+'">'+esc(c.name)+' — 미완료 '+(c.total-c.done)+'곳</option>';
-    }).join('') || '<option value="">진행 중인 취합이 없습니다</option>';
+    }).join('') || '<option value="">문자를 보낼 수 있는 취합이 없습니다</option>';
+    $('smsNoOwn').classList.toggle('hidden', COLS.length>0);
     if(COLS.length) smsPickCollection();
   }).catch(function(e){ toast(e.message,'err'); });
   loadSmsHist();
@@ -1823,15 +1854,20 @@ function loadHq(){
     $('hqCount').innerHTML='등록된 담당자 <b class="num">'+HQUSERS.length+'</b>명';
     $('hqBody').innerHTML=HQUSERS.map(function(u){
       return '<tr'+(u.me?' style="background:var(--accent-light)"':'')+'>'+
-        '<td><b>'+esc(u.id)+'</b>'+(u.me?' <span class="badge b-acc">나</span>':'')+'</td>'+
+        '<td><b>'+esc(u.id)+'</b>'+(u.me?' <span class="badge b-acc">나</span>':'')+
+          (u.master?' <span class="badge b-warn">마스터</span>':'')+'</td>'+
         '<td class="sub">'+(u.empty? '<span class="badge b-dan">설정 안 됨</span>'
                           : (u.hashed? '암호화되어 저장됨' : '<span class="badge b-warn">예전 방식</span>'))+'</td>'+
         '<td>'+(u.empty? '<span class="badge b-dan">로그인 불가</span>':'<span class="badge b-ok">사용</span>')+'</td>'+
         '<td><div class="btn-row">'+
           '<button class="btn sm" onclick="openHq(\''+esc(u.id)+'\')">비밀번호 변경</button>'+
-          (u.me? '' : '<button class="btn sm" onclick="delHqRow(\''+esc(u.id)+'\')">삭제</button>')+
+          (u.me? '' : '<button class="btn sm" onclick="toggleMaster(\''+esc(u.id)+'\','+(u.master?'false':'true')+')">'+
+                      (u.master?'마스터 해제':'마스터 지정')+'</button>'+
+                      '<button class="btn sm" onclick="delHqRow(\''+esc(u.id)+'\')">삭제</button>')+
         '</div></td></tr>';
     }).join('') || '<tr><td colspan="4" class="empty">등록된 담당자가 없습니다.</td></tr>';
+    $('hqCount').innerHTML='등록된 담당자 <b class="num">'+HQUSERS.length+'</b>명 · 마스터 <b class="num">'+
+      HQUSERS.filter(function(u){return u.master;}).length+'</b>명';
   }).catch(function(e){ $('hqBody').innerHTML='<tr><td colspan="4" class="empty">'+esc(e.message)+'</td></tr>'; });
 }
 
@@ -1861,6 +1897,15 @@ function saveHq(){
     toast(r.msg || (id+' 계정을 추가했습니다.'),'ok');
     loadHq();
   }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
+}
+
+function toggleMaster(id, on){
+  var msg = on
+    ? '"'+id+'" 에게 마스터 권한을 줄까요?\n\n사업장·그룹·담당자 계정 관리와 모든 취합 다운로드가 가능해집니다.'
+    : '"'+id+'" 의 마스터 권한을 해제할까요?';
+  if(!confirm(msg)) return;
+  api('hq.master',{userId:id,master:on}).then(function(r){ toast(r.msg,'ok'); loadHq(); })
+    .catch(function(e){ toast(e.message,'err'); });
 }
 
 function delHqRow(id){
