@@ -947,7 +947,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-01e';
+var BUILD = '2026-09-01f';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1038,14 +1038,17 @@ function doLogin(){
   p.then(function(r){
     busy(btn,false);
     if(!r.ok){ loginError(r.msg || '로그인에 실패했습니다.'); return; }
-    startSession(r.token);
+    if(isSite) store('lastSite', $('inSite').value);
+    startSession(r.token, r.boot);
   }).catch(function(e){ busy(btn,false); loginError(e.message); });
 }
 
 var BOOTDATA=null;
-function startSession(token){
+function startSession(token, preloaded){
   TOKEN = token; store('tok', token);
-  return api('boot', {}).then(function(r){
+  // 로그인 응답이 화면 데이터까지 실어 왔으면 추가 요청 없이 바로 씁니다.
+  var p = preloaded ? Promise.resolve(preloaded) : api('boot', {});
+  return p.then(function(r){
     ROLE = r.role; ME = r; BOOTDATA = r;
     $('loginPage').classList.add('hidden');
     if(ROLE==='hq'){
@@ -1082,7 +1085,7 @@ function boot(){
   if(m){
     history.replaceState({}, '', location.pathname);
     api('login.link', { linkToken: decodeURIComponent(m[1]) }).then(function(r){
-      if(r.ok) return startSession(r.token);
+      if(r.ok) return startSession(r.token, r.boot);
       loginError(r.msg); fillSiteSelect();
     }).catch(function(e){ loginError(e.message); fillSiteSelect(); });
     return;
@@ -1097,15 +1100,39 @@ function boot(){
   }
 }
 
+/**
+ * 사업장 목록은 자주 바뀌지 않습니다.
+ * 한 번 받아오면 브라우저에 저장해 두고, 다음부터는 즉시 그린 뒤
+ * 뒤에서 조용히 최신 목록으로 맞춥니다. 기다리는 시간이 사라집니다.
+ */
+function paintSiteSelect(list){
+  if(!list || !list.length){
+    $('inSite').innerHTML='<option value="">등록된 사업장이 없습니다</option>';
+    return;
+  }
+  var last = load('lastSite');
+  $('inSite').innerHTML = list.map(function(s){
+    return '<option value="'+esc(s.code)+'"'+(s.code===last?' selected':'')+'>'+
+           esc(s.name)+' ('+esc(s.code)+')</option>';
+  }).join('');
+}
+
 function fillSiteSelect(){
-  api('sites.public', {}).then(function(r){
-    SITES = r.list || [];
-    $('inSite').innerHTML = SITES.map(function(s){
-      return '<option value="'+esc(s.code)+'">'+esc(s.name)+' ('+esc(s.code)+')</option>';
-    }).join('') || '<option value="">등록된 사업장이 없습니다</option>';
+  var cached=null;
+  try { cached = JSON.parse(load('sitesCache')||'null'); } catch(e){}
+  if(cached && cached.length){ SITES=cached; paintSiteSelect(cached); }
+
+  return api('sites.public', {}).then(function(r){
+    var list = r.list || [];
+    SITES = list;
+    // 내용이 같으면 다시 그리지 않습니다 (선택한 값이 튀지 않게)
+    if(JSON.stringify(list) !== JSON.stringify(cached)) paintSiteSelect(list);
+    store('sitesCache', JSON.stringify(list));
   }).catch(function(e){
-    $('inSite').innerHTML = '<option value="">불러오지 못했습니다</option>';
-    loginError(e.message);
+    if(!cached || !cached.length){
+      $('inSite').innerHTML = '<option value="">불러오지 못했습니다</option>';
+      loginError(e.message);
+    }
   });
 }
 
