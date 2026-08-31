@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>취합관리 시스템</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
@@ -442,6 +443,7 @@ header{top:0}
       <div class="hint" style="text-align:center;margin-top:.6rem">
         문자로 받은 링크를 누르면 로그인 없이 바로 업로드 화면이 열립니다.<br>
         비밀번호를 5회 틀리면 30분간 잠깁니다.
+        <div style="margin-top:.5rem;opacity:.6" id="buildTag"></div>
       </div>
     </div>
   </div>
@@ -837,13 +839,15 @@ header{top:0}
 
 <script>
 /* ══════════════════════════════════════════════════════════════
-   ★ 여기만 고치면 됩니다 ★
-   아래 따옴표 안의 PASTE_YOUR_WEB_APP_URL_HERE 를 지우고
-   배포한 Apps Script 웹 앱 URL 을 붙여넣으세요. 따옴표는 남겨두세요.
-
-   예) var API_URL = 'https://script.google.com/macros/s/AKfycb.../exec';
+   Apps Script 웹 앱 주소 — 이미 채워져 있습니다.
+   웹앱을 새 URL 로 다시 배포했을 때만 바꾸면 됩니다.
    ══════════════════════════════════════════════════════════════ */
-var API_URL = 'PASTE_YOUR_WEB_APP_URL_HERE';
+var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mBokSBOlGUJ2QCp7JSdrrmzTnadaCd_57L520Yocp3g6/exec';
+
+/* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
+   Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
+var BUILD = '2026-08-31';
+try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
 var TOKEN = '', ROLE = '', ME = null;
@@ -863,7 +867,7 @@ function toast(msg, kind){
 
 function api(action, params){
   if(API_URL.indexOf('PASTE_') === 0){
-    return Promise.reject(new Error('API_URL 이 설정되지 않았습니다.\n\nindex.html 에서 Ctrl+F 로 PASTE 를 찾아, 그 자리에 Apps Script 웹 앱 URL 을 넣어주세요.'));
+    return Promise.reject(new Error('서버 주소가 설정되지 않았습니다.\n\n예전 화면이 남아 있을 수 있습니다. Ctrl+Shift+R 을 눌러 새로고침해 주세요.\n그래도 같으면 관리자에게 알려주세요.'));
   }
   var body = Object.assign({ action: action, token: TOKEN }, params || {});
   return fetch(API_URL, {
@@ -965,6 +969,7 @@ function logout(silent){
 
 /* ── 시작 ─────────────────────────────────────────────────────── */
 function boot(){
+  if($('buildTag')) $('buildTag').textContent='v'+BUILD;
   $('btnLogin').addEventListener('click', doLogin);
   ['inPin','inPw'].forEach(function(id){
     $(id).addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
