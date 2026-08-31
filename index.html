@@ -577,6 +577,9 @@ header{top:0}
     </div>
 
     <div class="settab on" id="s-sites">
+      <div class="note d hidden" id="setOld"><b>서버가 예전 버전입니다.</b> 담당자·연락처·사용상태가 제대로 보이지 않고 사업장 추가·수정이 동작하지 않습니다.<br>
+        Apps Script 에서 <b>취합_03_data</b> 와 <b>취합_06_api</b> 를 최신 파일로 바꾼 뒤,
+        <b>배포 → 배포 관리 → 연필 → 버전: 새 버전 → 배포</b> 까지 해주세요.</div>
       <div class="note i">연락처의 뒤 4자리가 곧 그 사업장의 비밀번호입니다. 목록에서는 가려서 보여주며, 전체 번호를 확인하면 감사 로그에 기록됩니다.</div>
       <div class="inline" style="margin-bottom:.7rem">
         <input type="text" id="siteSearch" placeholder="사업장 · 담당자 검색" oninput="renderSites()" style="max-width:260px">
@@ -846,7 +849,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-08-31';
+var BUILD = '2026-08-31b';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1472,33 +1475,45 @@ function loadSites(){
   }).catch(function(e){ toast(e.message,'err'); });
 }
 
+/* 예전 버전 백엔드는 active·hasPhone 을 돌려주지 않습니다.
+   그 경우 값이 없다고 '사용중지·연락처 없음'으로 잘못 보이지 않도록 보정합니다. */
+function siteActive(s){ return s.active === undefined ? true : !!s.active; }
+function siteHasPhone(s){
+  if(s.hasPhone !== undefined) return !!s.hasPhone;
+  return String(s.phone||'').replace(/[^0-9]/g,'').length >= 4;
+}
+function backendOld(){ return SITES.length>0 && SITES[0].active === undefined; }
+
 function renderSites(){
   var q=(($('siteSearch')||{}).value||'').trim();
   var list=SITES.filter(function(s){
     return !q || s.name.indexOf(q)>=0 || s.code.indexOf(q)>=0 || String(s.manager||'').indexOf(q)>=0;
   });
-  var noPhone=SITES.filter(function(s){ return s.active && !s.hasPhone; }).length;
+  var noPhone=SITES.filter(function(s){ return siteActive(s) && !siteHasPhone(s); }).length;
   $('siteCount').innerHTML='전체 <b class="num">'+SITES.length+'</b>곳'+
     (noPhone? ' · <b style="color:var(--danger)">연락처 없음 '+noPhone+'곳</b>':'');
 
+  $('setOld').classList.toggle('hidden', !backendOld());
+
   $('setSites').innerHTML = list.length ? list.map(function(s){
-    return '<tr'+(s.active?'':' style="opacity:.55;background:var(--surface2)"')+'>'+
+    var act=siteActive(s), hp=siteHasPhone(s);
+    return '<tr'+(act?'':' style="opacity:.55;background:var(--surface2)"')+'>'+
       '<td class="num">'+esc(s.code)+'</td>'+
       '<td><b>'+esc(s.name)+'</b></td>'+
       '<td><span class="gtags">'+(s.region?'<span class="gtag rg">'+esc(s.region)+'</span>':'')+
         (s.groups||[]).map(function(g){return '<span class="gtag">'+esc(g)+'</span>';}).join('')+'</span></td>'+
-      '<td>'+esc(s.manager||'<span class="sub">—</span>')+'</td>'+
+      '<td>'+(s.manager? esc(s.manager) : '<span class="sub">—</span>')+'</td>'+
       '<td class="num mask" id="ph-'+esc(s.code)+'">'+
-        (s.hasPhone
+        (hp
           ? esc(s.phone)+' <button class="lockbtn" onclick="reveal(\''+esc(s.code)+'\')" title="전체 번호 보기">🔒</button>'
           : '<span class="badge b-dan">연락처 없음</span>')+'</td>'+
-      '<td>'+(s.active
+      '<td>'+(act
           ? (s.locked? '<span class="badge b-warn">로그인 잠김</span>':'<span class="badge b-ok">사용</span>')
           : '<span class="badge b-mut">사용중지</span>')+'</td>'+
       '<td><div class="btn-row">'+
         '<button class="btn sm" onclick="openSite(\''+esc(s.code)+'\')">수정</button>'+
         (s.locked? '<button class="btn sm" onclick="unlockSite(\''+esc(s.code)+'\')">잠금해제</button>':'')+
-        (s.active
+        (act
           ? '<button class="btn sm" onclick="toggleSite(\''+esc(s.code)+'\',false)">중지</button>'
           : '<button class="btn sm" onclick="toggleSite(\''+esc(s.code)+'\',true)">재사용</button>')+
       '</div></td></tr>';
@@ -1522,8 +1537,9 @@ function openSite(code){
   $('smPhone').value  = '';
   $('smSub').value    = s? (s.subContacts||'') : '';
   if(s){
-    $('smPhone').placeholder = s.hasPhone? '현재 '+s.phone+' — 바꿀 때만 입력' : '010-1234-5678';
-    if(!s.hasPhone){
+    var hp=siteHasPhone(s);
+    $('smPhone').placeholder = hp? '현재 '+s.phone+' — 바꿀 때만 입력' : '010-1234-5678';
+    if(!hp){
       $('smWarn').textContent='이 사업장은 연락처가 없어 담당자가 로그인할 수 없습니다.';
       $('smWarn').classList.remove('hidden');
     }
