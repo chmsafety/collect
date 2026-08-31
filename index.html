@@ -952,11 +952,11 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-01h';
+var BUILD = '2026-09-01i';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
-var TOKEN = '', ROLE = '', ME = null, MASTER = false;
+var TOKEN = '', ROLE = '', ME = null, MASTER = false, SERVERV = '';
 var SITES = [], GROUPS = [], COLS = [];
 
 function $(id){ return document.getElementById(id); }
@@ -1062,6 +1062,9 @@ function startSession(token, preloaded){
       $('hqName').innerHTML = esc(r.user.id) +
         (MASTER? ' <span class="badge" style="background:rgba(255,255,255,.22);border-color:transparent;color:#fff">마스터</span>' : '');
       $('hqInitial').textContent = String(r.user.id).charAt(0).toUpperCase();
+      SERVERV = r.sv || '';
+      if($('buildTag')) $('buildTag').textContent =
+        'v'+BUILD+' · 서버 '+(SERVERV || '구버전(교체 필요)');
       applyRole();
       bootHq();
     } else {
