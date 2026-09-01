@@ -774,7 +774,9 @@ nav{gap:.3rem}
             <div id="cfBalance" class="sub">솔라피로 설정하면 잔액을 조회할 수 있습니다.</div>
             <div class="btn-row" style="margin-top:.6rem">
               <button class="btn sm" onclick="loadBalance()">잔액 조회</button>
+              <button class="btn sm" onclick="checkSenderNo()">발신번호 확인</button>
             </div>
+            <div class="hint" id="cfSender2" style="margin-top:.6rem"></div>
           </div>
         </div>
       </div>
@@ -1044,7 +1046,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-02b';
+var BUILD = '2026-09-02e';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -2076,6 +2078,15 @@ function toggleAutoSms(input){
   var on = input.checked;
   api('sms.auto',{ on:on }).then(function(r){ toast(r.msg); })
     .catch(function(e){ input.checked=!on; chkTog(input); toast(e.message,'err'); });
+}
+
+/* 발신번호가 "이 API Key 의 계정에" 등록되어 있는지 확인합니다.
+   등록한 계정과 키를 발급한 계정이 다른 경우를 잡아 줍니다. */
+function checkSenderNo(){
+  $('cfSender2').innerHTML='<span class="spin d"></span>';
+  api('sms.sender',{}).then(function(r){
+    $('cfSender2').innerHTML = (r.match? '✓ ':'✗ ') + esc(r.msg).replace(/\n/g,'<br>');
+  }).catch(function(e){ $('cfSender2').innerHTML='✗ '+esc(e.message).replace(/\n/g,'<br>'); });
 }
 
 function loadBalance(){
