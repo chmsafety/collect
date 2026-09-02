@@ -5,8 +5,47 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>취합관리 시스템</title>
+
+<!-- 앱으로 설치되게 하는 부분 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#F26B0C">
+<meta name="description" content="사업장 자료 취합 · 제출 현황 · 독촉 문자">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="COLLECT">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
+
+/* ── 앱 설치 · 새 버전 알림 ─────────────────────────────────── */
+.pwa-chip{position:fixed;right:16px;bottom:16px;z-index:120;display:inline-flex;
+  align-items:center;gap:.45rem;padding:.6rem 1rem;border-radius:999px;border:0;
+  background:linear-gradient(180deg,#FF8A1F,#E45F06);color:#fff;font-weight:700;
+  font-size:.9rem;cursor:pointer;box-shadow:0 6px 18px rgba(226,95,6,.38);
+  font-family:inherit;letter-spacing:-.01em}
+.pwa-chip:hover{filter:brightness(1.06)}
+.pwa-chip:active{transform:translateY(1px)}
+.pwa-chip.hidden{display:none}
+.pwa-chip .x{margin-left:.2rem;opacity:.75;font-weight:600;padding:0 .1rem}
+.pwa-chip .x:hover{opacity:1}
+.upd-bar{position:fixed;left:0;right:0;bottom:0;z-index:130;display:none;
+  align-items:center;justify-content:center;gap:.8rem;flex-wrap:wrap;
+  padding:.7rem 1rem;background:#0f172a;color:#fff;font-size:.9rem}
+.upd-bar.on{display:flex}
+.upd-bar button{padding:.35rem .9rem;border-radius:6px;border:0;cursor:pointer;
+  font-family:inherit;font-weight:700;font-size:.85rem;background:#fff;color:#0f172a}
+.pwa-how{position:fixed;inset:0;z-index:140;display:none;align-items:center;
+  justify-content:center;background:rgba(15,23,42,.5);padding:1rem}
+.pwa-how.on{display:flex}
+.pwa-how .box{background:#fff;border-radius:12px;max-width:420px;width:100%;
+  padding:1.4rem;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.pwa-how h3{margin:0 0 .6rem;font-size:1.05rem}
+.pwa-how ol{margin:.4rem 0 1rem;padding-left:1.2rem;line-height:1.75;font-size:.92rem}
+.pwa-how .btn-row{display:flex;justify-content:flex-end}
+@media (display-mode:standalone){ .pwa-chip{display:none} }
 
 :root{
   --bg:#f4f6f9; --surface:#fff; --surface2:#f8fafc; --border:#e2e8f0; --border2:#cbd5e1;
@@ -1037,6 +1076,27 @@ nav{gap:.3rem}
 
 <div class="toast" id="toast"></div>
 
+<button class="pwa-chip hidden" id="pwaChip" onclick="installApp()">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M4 21h16"/>
+  </svg>
+  앱으로 설치<span class="x" onclick="hideChip(event)" title="숨기기">✕</span>
+</button>
+
+<div class="upd-bar" id="updBar">
+  새 버전이 준비됐습니다.
+  <button onclick="applyUpdate()">지금 새로고침</button>
+</div>
+
+<div class="pwa-how" id="pwaHow" onclick="if(event.target===this)closeHow()">
+  <div class="box">
+    <h3>홈 화면에 추가하기</h3>
+    <div id="pwaHowBody"></div>
+    <div class="btn-row"><button class="btn" onclick="closeHow()">닫기</button></div>
+  </div>
+</div>
+
 <script>
 /* ══════════════════════════════════════════════════════════════
    Apps Script 웹 앱 주소 — 이미 채워져 있습니다.
@@ -1046,12 +1106,13 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-02g';
+var BUILD = '2026-09-02i';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
 var TOKEN = '', ROLE = '', ME = null, MASTER = false, SERVERV = '';
 var SMSLIVE = false, APPURLSET = false;
+var START_PAGE = '';
 var SITES = [], GROUPS = [], COLS = [];
 
 function $(id){ return document.getElementById(id); }
@@ -1165,6 +1226,10 @@ function startSession(token, preloaded){
       if($('verTag'))   $('verTag').textContent   = vtxt;
       applyRole();
       bootHq();
+      if(START_PAGE && ['dash','list','sms','set'].indexOf(START_PAGE)>=0){
+        var want = START_PAGE; START_PAGE = '';
+        setTimeout(function(){ go(want); }, 60);
+      }
     } else {
       $('siteApp').classList.remove('hidden'); $('hqApp').classList.add('hidden');
       $('siteName').textContent = r.site.name + ' · ' + (r.site.manager||'');
@@ -1182,8 +1247,106 @@ function logout(silent){
 }
 
 /* ── 시작 ─────────────────────────────────────────────────────── */
+/* ══════════ 앱 설치 (PWA) ══════════
+   설치하면 노트북·휴대폰 홈에서 아이콘으로 바로 열립니다.
+   브라우저가 설치 안내를 안 주는 경우(iOS 등)에는 수동 방법을 보여줍니다. */
+var DEFERRED = null;
+
+function standalone(){
+  return window.matchMedia('(display-mode: standalone)').matches ||
+         window.navigator.standalone === true;
+}
+
+function showChipMaybe(){
+  var chip = $('pwaChip'); if(!chip) return;
+  var hidden = false;
+  try { hidden = localStorage.getItem('pwaHide') === '1'; } catch(e){}
+  chip.classList.toggle('hidden', standalone() || hidden);
+}
+
+function hideChip(e){
+  e.stopPropagation();
+  try { localStorage.setItem('pwaHide','1'); } catch(err){}
+  $('pwaChip').classList.add('hidden');
+  toast('설치 버튼을 숨겼습니다. 주소창의 설치 아이콘으로도 설치할 수 있습니다.');
+}
+
+function installApp(){
+  if(DEFERRED){
+    DEFERRED.prompt();
+    DEFERRED.userChoice.then(function(c){
+      if(c && c.outcome==='accepted'){ $('pwaChip').classList.add('hidden'); }
+      DEFERRED = null;
+    });
+    return;
+  }
+  openHow();
+}
+
+function openHow(){
+  var ua = navigator.userAgent, steps;
+  if(/iPhone|iPad|iPod/i.test(ua)){
+    steps = ['사파리 아래쪽 <b>공유</b> 버튼(↑)을 누릅니다',
+             '목록에서 <b>홈 화면에 추가</b>를 고릅니다',
+             '오른쪽 위 <b>추가</b>를 누릅니다'];
+  } else if(/SamsungBrowser/i.test(ua)){
+    steps = ['오른쪽 아래 <b>메뉴</b>(≡)를 누릅니다',
+             '<b>현재 페이지 추가</b> → <b>홈 화면</b>을 고릅니다'];
+  } else if(/Android/i.test(ua)){
+    steps = ['오른쪽 위 <b>⋮</b> 를 누릅니다',
+             '<b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 고릅니다'];
+  } else {
+    steps = ['주소창 오른쪽 끝의 <b>설치 아이콘</b>(⊕ 또는 모니터 모양)을 누릅니다',
+             '없으면 오른쪽 위 <b>⋮</b> → <b>캐스트, 저장 및 공유</b> → <b>페이지를 앱으로 설치</b>',
+             '설치하면 바탕화면과 시작 메뉴에 <b>COLLECT</b> 아이콘이 생깁니다'];
+  }
+  $('pwaHowBody').innerHTML = '<ol><li>' + steps.join('</li><li>') + '</li></ol>';
+  $('pwaHow').classList.add('on');
+}
+function closeHow(){ $('pwaHow').classList.remove('on'); }
+
+var WAITING = null;
+function applyUpdate(){
+  if(WAITING) WAITING.postMessage('skipWaiting');
+  setTimeout(function(){ location.reload(); }, 300);
+}
+
+function initPWA(){
+  showChipMaybe();
+
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault(); DEFERRED = e; showChipMaybe();
+  });
+  window.addEventListener('appinstalled', function(){
+    $('pwaChip').classList.add('hidden');
+    toast('설치했습니다. 이제 홈 화면의 COLLECT 아이콘으로 여세요.');
+  });
+
+  if(!('serviceWorker' in navigator)) return;
+  // file:// 로 열었을 때는 등록이 안 되므로 조용히 건너뜁니다
+  if(location.protocol !== 'https:' && location.hostname !== 'localhost') return;
+
+  navigator.serviceWorker.register('sw.js').then(function(reg){
+    if(reg.waiting){ WAITING = reg.waiting; $('updBar').classList.add('on'); }
+    reg.addEventListener('updatefound', function(){
+      var n = reg.installing;
+      if(!n) return;
+      n.addEventListener('statechange', function(){
+        if(n.state === 'installed' && navigator.serviceWorker.controller){
+          WAITING = n; $('updBar').classList.add('on');
+        }
+      });
+    });
+  }).catch(function(){ /* 설치가 안 돼도 앱은 그대로 동작합니다 */ });
+}
+
 function boot(){
   if($('buildTag')) $('buildTag').textContent='v'+BUILD;
+  initPWA();
+
+  // 앱 아이콘 길게 눌러 나오는 바로가기(?p=list, ?p=sms)
+  var pm = /[?&]p=([a-z]+)/.exec(location.search);
+  if(pm){ START_PAGE = pm[1]; history.replaceState({}, '', location.pathname); }
   $('btnLogin').addEventListener('click', doLogin);
   ['inPin','inPw'].forEach(function(id){
     $(id).addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
@@ -1993,6 +2156,14 @@ function loadSmsCfg(){
     $('cfNotify').value   = r.notifyPhone || '';
     $('cfAuto').checked   = !!r.autoOn;
     fillHours(r.sendHour);
+    if($('cfSendUse')){
+      // 구글 시트가 앞자리 0 을 지우는 일이 있어, 실제 발송에 쓰이는 값을 그대로 보여 줍니다.
+      var raw=r.senderRaw||'', use=r.senderUse||'';
+      $('cfSendUse').innerHTML = use
+        ? '실제 발송에 쓰이는 번호: <b>'+esc(use)+'</b>'
+          + (raw && raw!==use ? ' <span class="sub">(시트 저장값 '+esc(raw)+' → 0 복구됨)</span>' : '')
+        : '';
+    }
     $('cfSecHint').textContent = r.hasSecret
       ? '이미 저장되어 있습니다. 바꿀 때만 새로 입력하세요.'
       : '아직 저장된 값이 없습니다.';
