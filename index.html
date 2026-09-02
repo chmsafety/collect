@@ -765,6 +765,7 @@ nav{gap:.3rem}
               <label>발신번호</label>
               <input type="text" id="cfSender" placeholder="010-1234-5678">
               <div class="hint">문자 서비스에 <b>사전등록</b>을 마친 번호만 쓸 수 있습니다. 등록 안 된 번호로는 발송이 거부됩니다.</div>
+              <div class="hint" id="cfSendUse" style="margin-top:.3rem"></div>
             </div>
           </div>
 
@@ -1106,7 +1107,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-02i';
+var BUILD = '2026-09-02j';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1127,19 +1128,50 @@ function toast(msg, kind){
   clearTimeout(toastT); toastT=setTimeout(function(){ t.className='toast'; }, kind==='err'?6000:3200);
 }
 
+/* 서버(Apps Script)는 가끔 한 번씩 JSON 대신 오류 페이지를 돌려줍니다.
+   대부분 다시 물어보면 정상이라, 한 번은 조용히 재시도합니다. */
 function api(action, params){
   if(API_URL.indexOf('PASTE_') === 0){
     return Promise.reject(new Error('서버 주소가 설정되지 않았습니다.\n\n예전 화면이 남아 있을 수 있습니다. Ctrl+Shift+R 을 눌러 새로고침해 주세요.\n그래도 같으면 관리자에게 알려주세요.'));
   }
   var body = Object.assign({ action: action, token: TOKEN }, params || {});
-  return fetch(API_URL, {
-    method: 'POST', redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body)
-  }).then(function(r){ return r.text(); }).then(function(txt){
-    var j;
-    try { j = JSON.parse(txt); }
-    catch(e){ throw new Error('서버 응답을 읽지 못했습니다. 웹앱 배포 설정에서 액세스 권한이 "모든 사용자"인지 확인해 주세요.'); }
+
+  function once(){
+    return fetch(API_URL, {
+      method: 'POST', redirect: 'follow', cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    }).then(function(r){ return r.text(); });
+  }
+
+  function parse(txt){
+    try { return { ok: true, j: JSON.parse(txt) }; }
+    catch(e){ return { ok: false, txt: String(txt || '') }; }
+  }
+
+  function badResponse(txt){
+    // 무엇이 돌아왔는지에 따라 사람이 할 수 있는 조치를 알려 줍니다.
+    if(/accounts\.google\.com|로그인|Sign in/i.test(txt))
+      return new Error('서버가 구글 로그인 화면을 돌려줬습니다.\n\nApps Script 배포 설정에서 "액세스 권한: 모든 사용자" 인지 확인해 주세요.');
+    if(/Authorization is required|승인이 필요/i.test(txt))
+      return new Error('스크립트 권한 승인이 필요합니다.\n\nApps Script 편집기에서 아무 함수나 한 번 실행해 권한을 허용한 뒤 다시 배포해 주세요.');
+    if(/Exceeded maximum execution time|초과/i.test(txt))
+      return new Error('서버 처리 시간이 초과됐습니다.\n\n잠시 후 다시 시도해 주세요.');
+    return new Error('서버가 일시적으로 응답하지 못했습니다.\n\n잠시 후 다시 시도해 주세요. 계속 같으면 Apps Script 배포를 다시 해주세요.');
+  }
+
+  return once().then(function(txt){
+    var p1 = parse(txt);
+    if(p1.ok) return p1.j;
+    // 한 번만 조용히 재시도 — 일시적인 오류 페이지가 대부분입니다
+    return new Promise(function(res){ setTimeout(res, 700); })
+      .then(once)
+      .then(function(txt2){
+        var p2 = parse(txt2);
+        if(p2.ok) return p2.j;
+        throw badResponse(p2.txt || p1.txt);
+      });
+  }).then(function(j){
     if(j.auth){ logout(true); throw new Error(j.error || '다시 로그인해 주세요.'); }
     if(j.ok === false && j.error) throw new Error(j.error);
     return j;
