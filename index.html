@@ -7,6 +7,9 @@
 <title>취합관리 시스템</title>
 
 <!-- 앱으로 설치되게 하는 부분 -->
+<link rel="preconnect" href="https://script.google.com" crossorigin>
+<link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+<link rel="dns-prefetch" href="https://script.google.com">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#F26B0C">
 <meta name="description" content="사업장 자료 취합 · 제출 현황 · 독촉 문자">
@@ -454,6 +457,8 @@ nav{gap:.3rem}
 /* 자간을 넓히면 안내문구가 흩어져 보여서 placeholder 만 원래 자간으로 */
 #loginPage #inPin::placeholder{letter-spacing:normal;font-size:1rem;font-family:"Noto Sans KR",sans-serif}
 #loginPage .hint{font-size:.86rem;line-height:1.6;margin-top:.4rem}
+#loginPage .hint.one-line{font-size:.76rem;letter-spacing:-.02em;white-space:nowrap}
+@media(max-width:480px){#loginPage .hint.one-line{white-space:normal;letter-spacing:0;font-size:.8rem}}
 #loginPage #btnLogin{font-size:1.08rem;font-weight:700;padding:.7rem;border-radius:9px}
 #loginPage .note{font-size:.9rem;padding:.7rem .85rem;line-height:1.6}
 #loginPage #buildTag{font-size:.78rem}
@@ -540,7 +545,7 @@ nav{gap:.3rem}
 
       <div class="note d hidden" id="loginErr"></div>
       <button class="btn pri" id="btnLogin" style="width:100%;justify-content:center;padding:.55rem">로그인</button>
-      <div class="hint" style="text-align:center;margin-top:.6rem">
+      <div class="hint one-line" style="text-align:center;margin-top:.6rem">
         문자로 받은 링크를 누르면 로그인 없이 바로 업로드 화면이 열립니다.<br>
         비밀번호를 5회 틀리면 30분간 잠깁니다.
         <div style="margin-top:.5rem;opacity:.6" id="buildTag"></div>
@@ -1107,7 +1112,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-09-02j';
+var BUILD = '2026-09-02k';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1275,6 +1280,7 @@ function logout(silent){
   TOKEN=''; ROLE=''; store('tok', null);
   $('hqApp').classList.add('hidden'); $('siteApp').classList.add('hidden');
   $('loginPage').classList.remove('hidden');
+  sitesReq = null; fillSiteSelect();   // 캐시로 즉시 그리고 최신 목록으로 맞춥니다
   if(!silent) toast('로그아웃했습니다.');
 }
 
@@ -1374,6 +1380,21 @@ function initPWA(){
 
 function boot(){
   if($('buildTag')) $('buildTag').textContent='v'+BUILD;
+
+  /* 사업장 목록을 가장 먼저 처리합니다.
+     저장해 둔 목록이 있으면 그 자리에서 바로 그려 기다림이 없고,
+     최신 목록 요청은 세션 복구와 나란히 나갑니다 —
+     예전처럼 세션 확인이 끝난 뒤에야 시작하지 않습니다. */
+  var linkT  = /[?&]t=([^&]+)/.exec(location.search);
+  var savedT = load('tok');
+  if(linkT){
+    // 문자 링크로 들어온 경우 — 로그인 화면을 지나가므로 목록이 필요 없습니다
+  } else if(savedT){
+    paintCachedSites();     // 세션이 살아 있으면 요청 없이 캐시만 그려 둡니다
+  } else {
+    fillSiteSelect();       // 로그인 화면이 바로 뜨는 경우에만 최신 목록을 부릅니다
+  }
+
   initPWA();
 
   // 앱 아이콘 길게 눌러 나오는 바로가기(?p=list, ?p=sms)
@@ -1385,22 +1406,19 @@ function boot(){
   });
   $('inPin').addEventListener('input', function(){ this.value=this.value.replace(/[^0-9]/g,''); });
 
-  var m = /[?&]t=([^&]+)/.exec(location.search);
-  if(m){
+  if(linkT){
     history.replaceState({}, '', location.pathname);
-    api('login.link', { linkToken: decodeURIComponent(m[1]) }).then(function(r){
+    api('login.link', { linkToken: decodeURIComponent(linkT[1]) }).then(function(r){
       if(r.ok) return startSession(r.token, r.boot);
       loginError(r.msg); fillSiteSelect();
     }).catch(function(e){ loginError(e.message); fillSiteSelect(); });
     return;
   }
 
-  var saved = load('tok');
-  if(saved){
-    TOKEN = saved;
-    startSession(saved).catch(function(){ TOKEN=''; store('tok',null); fillSiteSelect(); });
-  } else {
-    fillSiteSelect();
+  if(savedT){
+    TOKEN = savedT;
+    // 세션이 끊겨 로그인 화면으로 돌아올 때: 캐시는 이미 그려져 있고 최신 목록만 받아옵니다
+    startSession(savedT).catch(function(){ TOKEN=''; store('tok',null); fillSiteSelect(); });
   }
 }
 
@@ -1421,23 +1439,32 @@ function paintSiteSelect(list){
   }).join('');
 }
 
-function fillSiteSelect(){
+var sitesReq = null;      // 같은 요청이 두 번 나가지 않게 붙잡아 둡니다
+function paintCachedSites(){
   var cached=null;
   try { cached = JSON.parse(load('sitesCache')||'null'); } catch(e){}
   if(cached && cached.length){ SITES=cached; paintSiteSelect(cached); }
+  return cached;
+}
 
-  return api('sites.public', {}).then(function(r){
+function fillSiteSelect(){
+  var cached = paintCachedSites();
+  if(sitesReq) return sitesReq;
+
+  sitesReq = api('sites.public', {}).then(function(r){
     var list = r.list || [];
     SITES = list;
     // 내용이 같으면 다시 그리지 않습니다 (선택한 값이 튀지 않게)
     if(JSON.stringify(list) !== JSON.stringify(cached)) paintSiteSelect(list);
     store('sitesCache', JSON.stringify(list));
   }).catch(function(e){
+    sitesReq = null;                       // 실패한 요청은 다시 시도할 수 있게 풀어줍니다
     if(!cached || !cached.length){
       $('inSite').innerHTML = '<option value="">불러오지 못했습니다</option>';
       loginError(e.message);
     }
   });
+  return sitesReq;
 }
 
 /* ── 화면 전환 ────────────────────────────────────────────────── */
