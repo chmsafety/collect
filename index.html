@@ -526,7 +526,8 @@ nav{gap:.3rem}
     <div class="card">
       <div class="note hidden" id="shareNote" style="margin:0 0 1rem;line-height:1.55">
         <b>자료 제출 링크</b>로 들어오셨습니다.<br>
-        사업장을 고르고 비밀번호를 넣으면 <b>해당 자료 올리기 화면</b>이 바로 열립니다.</div>
+        사업장을 고르고 비밀번호를 넣으면 <b>해당 자료 올리기 화면</b>이 바로 열립니다.
+        <button class="btn sm hidden" id="shareHqCont" style="margin-top:.5rem">본사 화면에서 이 취합 보기 →</button></div>
       <div class="seg" style="margin-bottom:1rem">
         <button class="on" id="tabSite" onclick="loginTab('site')">사업장 담당자</button>
         <button id="tabHq" onclick="loginTab('hq')">본사 담당자</button>
@@ -1137,7 +1138,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-09a';
+var BUILD = '2026-11-09b';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1450,6 +1451,22 @@ function boot(){
       if(r.ok) return startSession(r.token, r.boot);
       loginError(r.msg); fillSiteSelect();
     }).catch(function(e){ loginError(e.message); fillSiteSelect(); });
+    return;
+  }
+
+  /* 공유 링크인데 이 브라우저에 본사 로그인이 남아 있으면,
+     본사 화면으로 넘기지 않고 사업장 로그인 화면을 보여 줍니다.
+     (본사 담당자가 사업장 담당자를 겸하는 경우) */
+  if(savedT && PENDING_COL){
+    TOKEN = savedT;
+    api('boot', {}).then(function(r){
+      if(r.role !== 'hq') return startSession(savedT, r);
+      TOKEN = '';
+      loginTab('site'); fillSiteSelect();
+      var cont = $('shareHqCont');
+      cont.classList.remove('hidden');
+      cont.onclick = function(){ startSession(savedT, r); };
+    }).catch(function(){ TOKEN=''; store('tok',null); fillSiteSelect(); });
     return;
   }
 
