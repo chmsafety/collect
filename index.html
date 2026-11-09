@@ -1138,7 +1138,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-09b';
+var BUILD = '2026-11-09c';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1256,6 +1256,12 @@ function doLogin(){
   var btn = $('btnLogin');
   var isSite = $('tabSite').classList.contains('on');
   $('loginErr').classList.add('hidden');
+  if(isSite){
+    if(!$('inSite').value){ loginError('사업장을 선택해 주세요.'); return; }
+    if(!/^\d{4}$/.test($('inPin').value)){ loginError('비밀번호 4자리를 입력해 주세요.'); return; }
+  } else if(!$('inUser').value.trim() || !$('inPw').value){
+    loginError('아이디와 비밀번호를 입력해 주세요.'); return;
+  }
   busy(btn, true, '로그인 중');
   var p = isSite
     ? api('login.site', { siteCode: $('inSite').value, pin: $('inPin').value })
@@ -2620,9 +2626,28 @@ function uploadOne(file, onProg){
     });
 }
 
+var UPLOADING=0;
+window.addEventListener('beforeunload', function(e){
+  if(UPLOADING>0){ e.preventDefault(); e.returnValue=''; }
+});
+var MAX_UP_MB=30;
 function queueFiles(files){
   if(!files || !files.length) return;
   var list=Array.prototype.slice.call(files);
+  var big=list.filter(function(f){ return f.size>MAX_UP_MB*1024*1024; });
+  if(big.length){
+    toast(big.map(function(f){return f.name;}).join(', ')+' — 파일 1개는 '+MAX_UP_MB+'MB까지 올릴 수 있습니다. 나눠서 올려 주세요.','err');
+    list=list.filter(function(f){ return f.size<=MAX_UP_MB*1024*1024; });
+    if(!list.length) return;
+  }
+  var empty=list.filter(function(f){ return !f.size; });
+  if(empty.length){
+    toast(empty.map(function(f){return f.name;}).join(', ')+' — 빈 파일은 올릴 수 없습니다.','err');
+    list=list.filter(function(f){ return f.size>0; });
+    if(!list.length) return;
+  }
+  UPLOADING++;
+  var failed=0, skipped=big.length+empty.length;
   var box=$('upQueue');
   var chain=Promise.resolve();
   list.forEach(function(f){
@@ -2643,12 +2668,18 @@ function queueFiles(files){
           setTimeout(function(){ row.remove(); },1200);
         })
         .catch(function(e){
+          failed++;
           row.innerHTML='<span class="nm">'+esc(f.name)+'</span><span class="badge b-dan">실패</span>'+
             '<span class="sub">'+esc(e.message)+'</span>';
         });
     });
   });
-  chain.then(function(){ loadMyFiles(); loadMy(); toast('업로드를 마쳤습니다.','ok'); });
+  chain.then(function(){
+    UPLOADING--;
+    loadMyFiles(); loadMy();
+    if(failed||skipped) toast((failed+skipped)+'개 파일이 올라가지 않았습니다'+(skipped?' (30MB 초과·빈 파일 '+skipped+'개)':'')+'. 확인 후 다시 올려 주세요.','err');
+    else toast('업로드를 마쳤습니다. 제출 완료로 처리됩니다.','ok');
+  });
 }
 
 function initUpload(){
