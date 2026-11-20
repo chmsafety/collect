@@ -1069,6 +1069,7 @@ nav{gap:.3rem}
   </div>
 </div>
 
+<input type="file" id="hqUpInput" multiple class="hidden" onchange="hqUpload(this.files)">
 <div class="overlay" id="ovFiles" onclick="if(event.target===this)closeOv('ovFiles')">
   <div class="modal" style="max-width:520px">
     <div class="modal-h"><h3 id="fTitle">제출 파일</h3><button class="x" onclick="closeOv('ovFiles')">✕</button></div>
@@ -1139,7 +1140,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-20a';
+var BUILD = '2026-11-20b';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1791,6 +1792,8 @@ function renderDetail(){
       '<td class="num">'+(s.fileCount?s.fileCount+'개':'<span class="sub">—</span>')+'</td>'+
       '<td>'+smsCell(s.code)+'</td>'+
       '<td><div class="btn-row">'+
+        (DETAIL.canDownload && DETAIL.status==='ing'
+          ? '<button class="btn sm" title="사업장 대신 파일 올리기" onclick="hqPickFiles(\''+s.code+'\')">업로드</button>' : '')+
         (s.fileCount && DETAIL.canDownload
           ? '<button class="btn sm" onclick="showFiles(\''+s.code+'\')">파일</button>'+
             '<button class="btn sm" onclick="openRedo(\''+s.code+'\',\''+esc(s.name)+'\')">재제출</button>' : '')+
@@ -1798,6 +1801,61 @@ function renderDetail(){
   }).join('') : '<tr><td colspan="7" class="empty">해당하는 사업장이 없습니다.</td></tr>';
 }
 function dTab(f){ dFilter=f; renderDetail(); }
+
+/* ── 본사 담당자가 사업장 대신 올리기 ──────────────────────────────
+   메일·메신저로 받은 자료를 그 사업장의 제출분으로 넣을 때 씁니다.
+   사업장이 직접 올린 것과 똑같이 제출 처리되고, 감사 로그에는 올린 담당자가 남습니다. */
+var hqUpCode='';
+function hqPickFiles(code){
+  hqUpCode=code;
+  var inp=$('hqUpInput'); inp.value=''; inp.click();
+}
+function hqUpload(files){
+  if(!files || !files.length || !DETAIL) return;
+  var s=DETAIL.submissions.filter(function(x){return x.code===hqUpCode;})[0];
+  if(!s) return;
+  var list=Array.prototype.slice.call(files);
+  var big=list.filter(function(f){ return f.size>MAX_UP_MB*1024*1024; });
+  if(big.length){
+    toast(big.map(function(f){return f.name;}).join(', ')+' — 파일 1개는 '+MAX_UP_MB+'MB까지 올릴 수 있습니다. 나눠서 올려 주세요.','err');
+    list=list.filter(function(f){ return f.size<=MAX_UP_MB*1024*1024; });
+    if(!list.length) return;
+  }
+  if(!confirm('"'+s.name+'" 사업장의 제출 자료로 파일 '+list.length+'개를 올립니다.\n\n'+
+      list.map(function(f){return '· '+f.name;}).join('\n')+'\n\n올리면 이 사업장은 제출한 것으로 처리됩니다. 계속할까요?')) return;
+
+  var id=DETAIL.id, code=s.code, okN=0, fails=[];
+  $('fTitle').textContent=s.name+' — 대신 올리기';
+  $('fBody').innerHTML='<div class="files">'+list.map(function(f,i){
+    var ic=icOf(f.name);
+    return '<div class="file"><span class="ic '+ic[0]+'">'+ic[1]+'</span><span class="fn">'+esc(f.name)+'</span>'+
+      '<span class="fs" id="hqUp'+i+'">대기</span></div>';
+  }).join('')+'</div><div class="hint" style="margin-top:.7rem">올리는 동안 이 창을 닫거나 화면을 떠나지 마세요.</div>';
+  openOv('ovFiles');
+
+  var chain=Promise.resolve();
+  list.forEach(function(f,i){
+    chain=chain.then(function(){
+      var cell=$('hqUp'+i); UPLOADING++;
+      return uploadOne(f,function(p){ if(cell) cell.textContent=Math.round(p*100)+'%'; },{id:id,siteCode:code})
+        .then(function(){ okN++; if(cell){ cell.textContent='완료'; cell.style.color='var(--ok)'; } })
+        .catch(function(e){ fails.push(f.name+' — '+e.message); if(cell){ cell.textContent='실패'; cell.style.color='var(--danger)'; } })
+        .then(function(){ UPLOADING--; });
+    });
+  });
+  chain.then(function(){
+    if(fails.length) toast('올리지 못한 파일이 있습니다.\n'+fails.join('\n'),'err');
+    else toast(s.name+' — 파일 '+okN+'개를 올렸습니다.','ok');
+    if(okN && DETAIL && DETAIL.id===id){
+      var keep=dFilter;
+      api('collections.get',{id:id}).then(function(r){
+        if(!DETAIL || DETAIL.id!==id) return;
+        DETAIL=r.data; dFilter=keep; renderDetail();
+        if(!fails.length) closeOv('ovFiles');
+      }).catch(function(){});
+    }
+  });
+}
 
 function showFiles(code){
   var s = DETAIL.submissions.filter(function(x){return x.code===code;})[0];
@@ -2664,8 +2722,11 @@ function delMyFile(id){
 }
 
 /* 업로드 — 조각 전송 */
-function uploadOne(file, onProg){
-  return api('upload.init',{id:CUR.id,fileName:file.name,size:file.size,mime:file.type||'application/octet-stream'})
+/* opt 는 본사 담당자가 사업장 대신 올릴 때만 넘깁니다 — { id: 취합ID, siteCode: 사업장코드 } */
+function uploadOne(file, onProg, opt){
+  var q={id:(opt&&opt.id)||CUR.id,fileName:file.name,size:file.size,mime:file.type||'application/octet-stream'};
+  if(opt&&opt.siteCode) q.siteCode=opt.siteCode;
+  return api('upload.init',q)
     .then(function(init){
       var cs=init.chunkSize||3145728;
       var n=Math.max(1,Math.ceil(file.size/cs));
