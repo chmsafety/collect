@@ -1072,6 +1072,26 @@ nav{gap:.3rem}
   </div>
 </div>
 
+<div class="overlay" id="ovEdit" onclick="if(event.target===this)closeOv('ovEdit')">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-h"><h3>일정 수정</h3><button class="x" onclick="closeOv('ovEdit')">✕</button></div>
+    <div class="modal-b">
+      <div class="field"><label>취합명</label><input type="text" id="edName" readonly style="background:var(--surface2)"></div>
+      <div class="field"><label>제출 기한 <span class="req">*</span></label>
+        <div class="inline"><input type="date" id="edDate" style="flex:1"><input type="time" id="edTime" style="width:110px"></div>
+        <div class="hint" id="edHint"></div></div>
+      <div class="field"><label>독촉 문자 발송 시점</label>
+        <div class="inline" id="edPoints"></div>
+        <div class="hint">미제출 사업장에만 발송됩니다.</div></div>
+      <div class="field"><label>안내 문구</label>
+        <textarea id="edNotice" style="min-height:60px" placeholder="사업장 화면에 함께 표시됩니다"></textarea></div>
+      <div class="note w" style="font-size:.72rem">기한을 바꾸면 이미 제출한 사업장의 <b>제출 · 지연 표시</b>도 새 기한 기준으로 다시 맞춰집니다. 바뀐 일정은 사업장에 자동으로 안내되지 않습니다.</div>
+    </div>
+    <div class="modal-f"><button class="btn" onclick="closeOv('ovEdit')">취소</button>
+      <button class="btn pri" id="btnEdit" onclick="saveEdit()">저장</button></div>
+  </div>
+</div>
+
 <div class="overlay" id="ovRedo" onclick="if(event.target===this)closeOv('ovRedo')">
   <div class="modal" style="max-width:460px">
     <div class="modal-h"><h3>재제출 요청</h3><button class="x" onclick="closeOv('ovRedo')">✕</button></div>
@@ -1160,7 +1180,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-20e';
+var BUILD = '2026-11-20f';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1784,6 +1804,7 @@ function renderDetail(){
     ? (shareBtn + (d.mergeOn? '<button class="btn" id="btnMerge" onclick="runMerge()">📊 엑셀 병합</button>':'') +
        '<button class="btn" onclick="downloadCsv()">현황표</button>' +
        '<button class="btn" id="btnZip" onclick="runZip()">🗂 ZIP 다운로드</button>' +
+       '<button class="btn" onclick="openEdit()">📅 일정 수정</button>' +
        '<button class="btn pri" onclick="gotoSmsFor()">✉ 미제출 문자발송</button>' +
        '<button class="btn dan" onclick="delCol()">삭제</button>')
     : '<span class="badge b-mut" style="padding:.4rem .7rem">조회만 가능</span>' + shareBtn;
@@ -1822,6 +1843,40 @@ function renderDetail(){
   }).join('') : '<tr><td colspan="7" class="empty">해당하는 사업장이 없습니다.</td></tr>';
 }
 function dTab(f){ dFilter=f; renderDetail(); }
+
+/* ── 만든 뒤 일정 수정 ─────────────────────────────────────────
+   제출 기한 · 독촉 문자 시점 · 안내 문구를 고칩니다. 대상 사업장과 취합명은 여기서 바꾸지 않습니다. */
+var edPoints={};
+function openEdit(){
+  var d=DETAIL; if(!d) return;
+  $('edName').value=d.name;
+  var m=/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(String(d.dueAt||''));
+  $('edDate').value=m?m[1]:''; $('edTime').value=m?m[2]:'18:00';
+  $('edNotice').value=d.notice||'';
+  edPoints={};
+  String(d.smsPoints||'').split(',').forEach(function(p){ p=p.trim(); if(p) edPoints[p]=1; });
+  $('edPoints').innerHTML=SMS_POINTS.map(function(p){
+    return '<label class="chk'+(edPoints[p]?' on':'')+'">'+
+           '<input type="checkbox"'+(edPoints[p]?' checked':'')+
+           ' onchange="edPoints[\''+p+'\']=this.checked?1:0;chkTog(this)"> '+p+'</label>';
+  }).join('');
+  $('edHint').textContent='현재 기한 '+d.dueAt+(d.status==='closed'?' · 마감된 취합입니다. 기한을 뒤로 미루면 다시 진행 중으로 바뀝니다.':'');
+  openOv('ovEdit');
+}
+function saveEdit(){
+  var date=$('edDate').value, time=$('edTime').value||'18:00';
+  if(!date){ toast('제출 기한 날짜를 선택해 주세요.','err'); return; }
+  var b=$('btnEdit'); busy(b,true,'저장 중');
+  api('collections.update',{id:DETAIL.id, patch:{
+    dueAt:date+'T'+time+':00',
+    smsPoints:DETAIL.smsPoints===undefined ? null : SMS_POINTS.filter(function(p){return edPoints[p];}),
+    notice:$('edNotice').value
+  }}).then(function(r){
+    busy(b,false); closeOv('ovEdit');
+    toast('일정을 수정했습니다.'+(r.restated? ' 제출·지연 표시 '+r.restated+'곳을 새 기한에 맞췄습니다.':''),'ok');
+    openDetail(DETAIL.id);
+  }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
+}
 
 /* ── 본사 담당자가 사업장 대신 올리기 ──────────────────────────────
    메일·메신저로 받은 자료를 그 사업장의 제출분으로 넣을 때 씁니다.
