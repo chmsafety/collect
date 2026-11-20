@@ -622,10 +622,11 @@ nav{gap:.3rem}
       <div class="btn-row" id="dActions"></div>
     </div>
     <div class="grid g4" style="margin-bottom:1rem" id="dTiles"></div>
+    <div id="dSms"></div>
     <div class="ftabs" id="dTabs"></div>
     <div class="tbl-wrap">
       <table><thead><tr>
-        <th style="width:22%">사업장</th><th>담당자</th><th>상태</th><th>제출일시</th><th>파일</th><th></th>
+        <th style="width:22%">사업장</th><th>담당자</th><th>상태</th><th>제출일시</th><th>파일</th><th>독촉문자</th><th></th>
       </tr></thead><tbody id="dBody"></tbody></table>
     </div>
   </div>
@@ -1138,7 +1139,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-09c';
+var BUILD = '2026-11-20a';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1683,12 +1684,67 @@ function loadList(){
 }
 
 var DETAIL=null, dFilter='all';
+/* 이 취합의 문자 발송 현황. null=아직 모름, false=서버가 예전 버전이라 알 수 없음 */
+var DSMS=null;
 function openDetail(id){
   go('detail');
-  $('dBody').innerHTML='<tr><td colspan="6" class="loading"><span class="spin d"></span></td></tr>';
+  DSMS=null; $('dSms').innerHTML='';
+  $('dBody').innerHTML='<tr><td colspan="7" class="loading"><span class="spin d"></span></td></tr>';
   api('collections.get',{id:id}).then(function(r){
     DETAIL=r.data; dFilter='all'; renderDetail();
+    loadDetailSms(id);
   }).catch(function(e){ toast(e.message,'err'); });
+}
+
+/* 문자 발송 여부는 따로 불러옵니다 — 제출 현황을 먼저 보여주고 뒤이어 채웁니다. */
+function loadDetailSms(id){
+  api('sms.status',{id:id}).then(function(r){
+    if(!DETAIL || DETAIL.id!==id) return;      // 그 사이 다른 취합을 열었으면 버립니다
+    DSMS=r.data||false; renderDetail();
+  }).catch(function(){
+    if(!DETAIL || DETAIL.id!==id) return;
+    DSMS=false; renderDetail();
+  });
+}
+function smsResBadge(res){
+  return res==='fail' ? ' <span class="badge b-dan">실패</span>'
+       : res==='part' ? ' <span class="badge b-warn">일부 실패</span>' : '';
+}
+function renderDetailSms(){
+  var el=$('dSms'); if(!el) return;
+  if(DSMS===null){ el.innerHTML=''; return; }
+  if(DSMS===false){
+    el.innerHTML='<div class="note w" style="margin-bottom:1rem">문자 발송 여부를 불러오지 못했습니다. 서버(.gs)가 예전 버전이면 <b>취합_07_sms · 취합_06_api</b> 를 교체하고 새 버전으로 배포해 주세요.</div>';
+    return;
+  }
+  var h=DSMS.history||[], sent=0, total=DETAIL.submissions.length;
+  DETAIL.submissions.forEach(function(s){ if(DSMS.bySite[s.code]) sent++; });
+  var head='<div class="card-t">문자 발송 이력 <span class="sub" style="font-weight:400;margin-left:.5rem">'+
+    (h.length ? '총 '+h.length+'회 · 최근 '+esc(String(h[0].at).slice(5))+' ('+esc(h[0].kind)+')' : '아직 발송된 문자가 없습니다')+
+    '</span></div>';
+  var body='';
+  if(h.length){
+    body='<div class="tbl-wrap"><table><thead><tr><th>발송일시</th><th>유형</th><th>대상</th><th>성공</th><th>실패</th></tr></thead><tbody>'+
+      h.slice(0,10).map(function(x){
+        return '<tr><td class="num">'+esc(String(x.at).slice(5))+'</td>'+
+          '<td><span class="badge '+(String(x.kind).indexOf('자동')===0?'b-mut':'b-acc')+'">'+esc(x.kind)+'</span></td>'+
+          '<td class="num">'+(x.siteCount? x.siteCount+'곳 · ':'')+x.targets+'건</td>'+
+          '<td class="num" style="color:var(--ok)">'+x.success+'</td>'+
+          '<td class="num"'+(x.fail?' style="color:var(--danger)"':'')+'>'+x.fail+'</td></tr>';
+      }).join('')+'</tbody></table></div>'+
+      (h.length>10?'<div class="hint" style="margin-top:.5rem">최근 10회만 표시합니다. 전체는 문자발송 화면의 발송 이력에서 볼 수 있습니다.</div>':'')+
+      '<div class="hint" style="margin-top:.5rem">대상 사업장 '+total+'곳 중 <b>'+sent+'곳</b>에 문자가 나갔습니다. 사업장별 내역은 아래 표의 <b>독촉문자</b> 열에서 확인하세요.'+
+      (DSMS.untracked? '<br>이 중 '+DSMS.untracked+'회는 사업장별 기록 기능이 생기기 전에 보낸 것이라 아래 표에는 반영되지 않습니다.':'')+'</div>';
+  }
+  el.innerHTML='<div class="card" style="margin-bottom:1rem">'+head+body+'</div>';
+}
+function smsCell(code){
+  if(DSMS===null) return '<span class="sub">…</span>';
+  if(DSMS===false) return '<span class="sub">—</span>';
+  var b=DSMS.bySite[code];
+  if(!b) return '<span class="sub">미발송</span>';
+  return '<span class="num">'+esc(String(b.lastAt).slice(5))+'</span>'+smsResBadge(b.lastResult)+
+    '<div class="sub">'+esc(b.lastKind)+' · 총 '+b.count+'회</div>';
 }
 
 function renderDetail(){
@@ -1715,6 +1771,7 @@ function renderDetail(){
     tile('d','미제출', c.no, '곳','') +
     tile('w','지연 제출', c.late, '곳','기한 경과 후 제출') +
     tile('w','재제출 필요', c.redo, '곳','');
+  renderDetailSms();
 
   var tabs=[['all','전체',c.total],['ok','제출',c.ok],['no','미제출',c.no],['late','지연',c.late],['redo','재제출 필요',c.redo]];
   $('dTabs').innerHTML = tabs.map(function(t){
@@ -1732,12 +1789,13 @@ function renderDetail(){
         (s.rejectReason?'<div class="sub" style="color:var(--warn)">'+esc(s.rejectReason)+'</div>':'')+'</td>'+
       '<td class="num">'+(s.submittedAt||'<span class="sub">—</span>')+'</td>'+
       '<td class="num">'+(s.fileCount?s.fileCount+'개':'<span class="sub">—</span>')+'</td>'+
+      '<td>'+smsCell(s.code)+'</td>'+
       '<td><div class="btn-row">'+
         (s.fileCount && DETAIL.canDownload
           ? '<button class="btn sm" onclick="showFiles(\''+s.code+'\')">파일</button>'+
             '<button class="btn sm" onclick="openRedo(\''+s.code+'\',\''+esc(s.name)+'\')">재제출</button>' : '')+
       '</div></td></tr>';
-  }).join('') : '<tr><td colspan="6" class="empty">해당하는 사업장이 없습니다.</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="empty">해당하는 사업장이 없습니다.</td></tr>';
 }
 function dTab(f){ dFilter=f; renderDetail(); }
 
