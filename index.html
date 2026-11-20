@@ -604,6 +604,7 @@ nav{gap:.3rem}
       <button class="ftab" onclick="listFilter(this,'reg')">정기취합</button>
       <button class="ftab" onclick="listFilter(this,'adhoc')">수시취합</button>
       <button class="ftab" onclick="listFilter(this,'done')">마감</button>
+      <button class="ftab" onclick="listFilter(this,'trash')" style="margin-left:auto">🗑 휴지통</button>
     </div>
     <div class="tbl-wrap">
       <table><thead><tr>
@@ -808,9 +809,18 @@ nav{gap:.3rem}
             <label class="switch"><input type="checkbox" id="cfAuto" onchange="toggleAutoSms(this)"><span class="track"><span class="knob"></span></span>
               <span>매일 정해진 시각에 자동 발송</span></label>
             <div class="field" style="margin-top:.7rem">
-              <label>발송 시각</label>
+              <label>매일 발송 시각</label>
               <select id="cfHour"></select>
               <div class="hint">취합마다 지정한 시점(D-3, 당일 등)에 해당하는 미제출 사업장에만 보냅니다.</div>
+            </div>
+            <div class="field">
+              <label>마감 당일 오후에 한 번 더</label>
+              <select id="cfHourPm"></select>
+              <div class="hint">마감 당일에는 위 시각에 한 번, 이 시각에 한 번 더 보냅니다. 그 사이 제출한 사업장은 빠지고, 발송 시점에 <b>당일</b>을 켠 취합만 해당합니다. 제출 기한 시각이 지난 뒤에는 보내지 않습니다.</div>
+            </div>
+            <div class="btn-row" style="margin-bottom:.9rem">
+              <button class="btn sm pri" id="btnCfHour" onclick="saveSmsCfg(this)">발송 시각 저장</button>
+              <span class="sub" id="cfAutoNow"></span>
             </div>
             <div class="field">
               <label>완료 알림 받을 번호 (선택)</label>
@@ -1053,6 +1063,15 @@ nav{gap:.3rem}
   </div>
 </div>
 
+<div class="overlay" id="ovDel" onclick="if(event.target===this)closeDel()">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-h"><h3 id="delTitle">취합 삭제</h3><button class="x" onclick="closeDel()">✕</button></div>
+    <div class="modal-b" id="delBody"></div>
+    <div class="modal-f"><button class="btn" onclick="closeDel()">취소</button>
+      <button class="btn dan" id="delBtn" onclick="delNext()">삭제</button></div>
+  </div>
+</div>
+
 <div class="overlay" id="ovRedo" onclick="if(event.target===this)closeOv('ovRedo')">
   <div class="modal" style="max-width:460px">
     <div class="modal-h"><h3>재제출 요청</h3><button class="x" onclick="closeOv('ovRedo')">✕</button></div>
@@ -1141,7 +1160,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-20c';
+var BUILD = '2026-11-20e';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1668,6 +1687,7 @@ function listFilter(b,f){
 }
 function loadList(){
   $('listBody').innerHTML='<tr><td colspan="8" class="loading"><span class="spin d"></span></td></tr>';
+  if(listF==='trash'){ loadTrash(); return; }
   api('collections.list',{filter:listF}).then(function(r){
     COLS = r.list||[];
     $('listSub').textContent = '전체 '+COLS.length+'건';
@@ -1936,11 +1956,104 @@ function sendRedo(){
   }).catch(function(e){ toast(e.message,'err'); });
 }
 
+/* ── 삭제 · 휴지통 ─────────────────────────────────────────────
+   삭제는 두 번 확인한 뒤 휴지통으로 보냅니다. 휴지통에서는 되돌리거나 완전히 지울 수 있습니다.
+   예전에는 확인 창 한 번으로 자료까지 바로 지워져, 잘못 누르면 되살릴 방법이 없었습니다. */
+var DEL=null, delTimer=null;
 function delCol(){
-  if(!confirm('취합 "'+DETAIL.name+'"을 삭제할까요?\n\n업로드된 파일과 제출 기록이 모두 삭제되며 되돌릴 수 없습니다.')) return;
-  api('collections.delete',{id:DETAIL.id}).then(function(){
-    toast('삭제했습니다.'); go('list');
-  }).catch(function(e){ toast(e.message,'err'); });
+  var c=DETAIL.counts;
+  DEL={mode:'trash', step:1, id:DETAIL.id, name:DETAIL.name, info:'대상 '+c.total+'곳 · 제출 '+c.done+'곳'};
+  paintDel(); openOv('ovDel');
+}
+function askPurge(id){
+  var t=TRASH.filter(function(x){return x.id===id;})[0]; if(!t) return;
+  DEL={mode:'purge', step:1, id:t.id, name:t.name, info:'대상 '+t.total+'곳 · 제출 '+t.done+'곳 · 파일 '+t.fileCount+'개'};
+  paintDel(); openOv('ovDel');
+  setTimeout(function(){ var i=$('delName'); if(i) i.focus(); },100);
+}
+function paintDel(){
+  if(!DEL) return;
+  var b=$('delBtn'), h='';
+  clearInterval(delTimer); b.disabled=false;
+  if(DEL.mode==='trash' && DEL.step===1){
+    $('delTitle').textContent='취합 삭제';
+    h='<div style="font-size:.86rem;margin-bottom:.7rem"><b>'+esc(DEL.name)+'</b><div class="sub">'+esc(DEL.info)+'</div></div>'+
+      '<div class="note i" style="margin:0">삭제하면 <b>휴지통으로 이동</b>합니다.<br>'+
+      '목록과 사업장 화면에서 사라지고 자동 독촉 문자도 멈춥니다. 올라온 자료와 제출 기록은 그대로 보관되며, '+
+      '<b>취합관리 › 휴지통</b>에서 언제든 되돌릴 수 있습니다.</div>';
+    b.textContent='삭제';
+  } else if(DEL.mode==='trash'){
+    $('delTitle').textContent='정말 삭제할까요?';
+    h='<div class="note d" style="margin:0"><b style="font-size:.9rem">"'+esc(DEL.name)+'" 취합을 정말 삭제하시겠습니까?</b><br>'+
+      esc(DEL.info)+'<br>사업장 담당자는 이 취합에 더 이상 자료를 올릴 수 없게 됩니다.</div>';
+    // 같은 자리를 연달아 눌러 넘어가는 일을 막으려고 잠깐 기다리게 합니다
+    var left=2; b.disabled=true; b.textContent='네, 삭제합니다 ('+left+')';
+    delTimer=setInterval(function(){
+      left--;
+      if(left<=0){ clearInterval(delTimer); b.disabled=false; b.textContent='네, 삭제합니다'; }
+      else b.textContent='네, 삭제합니다 ('+left+')';
+    },1000);
+  } else {
+    $('delTitle').textContent='완전 삭제';
+    h='<div class="note d"><b style="font-size:.9rem">되돌릴 수 없습니다.</b><br>'+
+      '"'+esc(DEL.name)+'" 취합의 올라온 파일과 제출 기록이 모두 지워집니다.<br>'+esc(DEL.info)+'</div>'+
+      '<div class="field" style="margin:0"><label>확인을 위해 취합명을 그대로 입력해 주세요</label>'+
+      '<input type="text" id="delName" autocomplete="off" placeholder="'+esc(DEL.name)+'" oninput="delNameChk()"></div>';
+    b.textContent='완전 삭제'; b.disabled=true;
+  }
+  $('delBody').innerHTML=h;
+}
+function delNameChk(){
+  $('delBtn').disabled = !DEL || $('delName').value.trim()!==String(DEL.name).trim();
+}
+function closeDel(){ clearInterval(delTimer); DEL=null; closeOv('ovDel'); }
+function delNext(){
+  if(!DEL) return;
+  var b=$('delBtn');
+  if(DEL.mode==='trash' && DEL.step===1){ DEL.step=2; paintDel(); return; }
+  if(DEL.mode==='trash'){
+    busy(b,true,'삭제 중');
+    api('collections.delete',{id:DEL.id}).then(function(){
+      busy(b,false); closeDel();
+      toast('휴지통으로 옮겼습니다.\n취합관리 › 휴지통에서 되돌릴 수 있습니다.','ok'); go('list');
+    }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
+    return;
+  }
+  if($('delName').value.trim()!==String(DEL.name).trim()) return;
+  busy(b,true,'삭제 중');
+  api('collections.purge',{id:DEL.id}).then(function(){
+    busy(b,false); closeDel(); toast('완전히 삭제했습니다.'); loadList();
+  }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
+}
+
+var TRASH=[];
+function loadTrash(){
+  api('collections.trash',{}).then(function(r){
+    if(listF!=='trash') return;
+    TRASH=r.list||[];
+    $('listSub').textContent='휴지통 '+TRASH.length+'건 · 자동으로 지워지지 않습니다';
+    $('listBody').innerHTML = TRASH.length ? TRASH.map(function(c){
+      return '<tr>'+
+        '<td><b>'+esc(c.name)+'</b><div class="sub">파일 '+c.fileCount+'개 보관 중</div></td>'+
+        '<td><span class="badge '+(c.type==='reg'?'b-acc':'b-mut')+'">'+(c.type==='reg'?'정기':'수시')+'</span></td>'+
+        '<td class="num">'+esc(c.dueAt)+'</td>'+
+        '<td class="num">'+c.total+'곳</td>'+
+        '<td>'+rateBar(c.done,c.total)+'</td>'+
+        '<td class="sub">'+esc(c.createdBy||'')+'</td>'+
+        '<td><span class="badge b-mut">삭제됨</span><div class="sub num">'+esc(String(c.deletedAt||'').slice(5))+
+          (c.deletedBy?' · '+esc(c.deletedBy):'')+'</div></td>'+
+        '<td>'+(c.canDownload
+          ? '<div class="btn-row"><button class="btn sm" onclick="restoreCol(\''+c.id+'\',this)">되돌리기</button>'+
+            '<button class="btn sm dan" onclick="askPurge(\''+c.id+'\')">완전 삭제</button></div>'
+          : '<span class="badge b-mut">조회만</span>')+'</td></tr>';
+    }).join('') : '<tr><td colspan="8" class="empty">휴지통이 비어 있습니다.</td></tr>';
+  }).catch(function(e){ $('listBody').innerHTML='<tr><td colspan="8" class="empty">'+esc(e.message)+'</td></tr>'; });
+}
+function restoreCol(id,btn){
+  busy(btn,true,'되돌리는 중');
+  api('collections.restore',{id:id}).then(function(){
+    toast('되돌렸습니다. 취합 목록에 다시 나타납니다.','ok'); loadList();
+  }).catch(function(e){ busy(btn,false); toast(e.message,'err'); });
 }
 
 /* ── 새 취합 ──────────────────────────────────────────────────── */
@@ -2433,8 +2546,9 @@ function loadSmsCfg(){
     $('cfSender').value   = r.sender || '';
     $('cfAppUrl').value   = r.appUrl || '';
     $('cfNotify').value   = r.notifyPhone || '';
-    $('cfAuto').checked   = !!r.autoOn;
-    fillHours(r.sendHour);
+    $('cfAuto').checked   = !!r.autoOn; chkTog($('cfAuto'));
+    fillHours(r.sendHour, r.sendHourPm);
+    paintAutoNow(r);
     if($('cfSendUse')){
       // 구글 시트가 앞자리 0 을 지우는 일이 있어, 실제 발송에 쓰이는 값을 그대로 보여 줍니다.
       var raw=r.senderRaw||'', use=r.senderUse||'';
@@ -2453,11 +2567,24 @@ function loadSmsCfg(){
   }).catch(function(e){ toast(e.message,'err'); });
 }
 
-function fillHours(sel){
+function hourLabel(h){ h=Number(h); return (h<12? '오전 ':'오후 ') + (h%12===0?12:h%12) + '시'; }
+function fillHours(sel, pm){
   var o='';
-  for(var h=0;h<24;h++) o += '<option value="'+h+'"'+(String(h)===String(sel)?' selected':'')+'>'
-    + (h<12? '오전 ':'오후 ') + (h%12===0?12:h%12) + '시</option>';
+  for(var h=0;h<24;h++) o += '<option value="'+h+'"'+(String(h)===String(sel)?' selected':'')+'>'+hourLabel(h)+'</option>';
   $('cfHour').innerHTML=o;
+  // 서버가 예전 버전이면 pm 값이 오지 않습니다 — 그때는 고르지 못하게 둡니다
+  var has = pm!==undefined && pm!==null;
+  var p='<option value="off"'+(String(pm)==='off'?' selected':'')+'>보내지 않음</option>';
+  for(var k=12;k<24;k++) p += '<option value="'+k+'"'+(String(k)===String(pm)?' selected':'')+'>'+hourLabel(k)+'</option>';
+  $('cfHourPm').innerHTML = has ? p : '<option value="">서버 업데이트 후 사용할 수 있습니다</option>';
+  $('cfHourPm').disabled = !has;
+}
+/* 지금 실제로 몇 시에 나가도록 걸려 있는지 — 저장한 값과 등록된 시각이 달라 헷갈리던 일이 있었습니다 */
+function paintAutoNow(r){
+  var el=$('cfAutoNow'); if(!el) return;
+  if(!r.autoOn){ el.textContent='자동 발송이 꺼져 있습니다.'; return; }
+  var pm=r.sendHourPm;
+  el.textContent='현재: 매일 '+hourLabel(r.sendHour)+(pm&&pm!=='off'?' · 마감 당일 '+hourLabel(pm)+' 추가':'');
 }
 
 function showSmsProblems(list){
@@ -2485,9 +2612,9 @@ function cfProviderChanged(){
   }
 }
 
-function saveSmsCfg(){
-  var btn=$('btnCfSave'); busy(btn,true,'저장 중');
-  api('sms.saveConfig',{ config:{
+function saveSmsCfg(from){
+  var btn=(from && from.tagName)? from : $('btnCfSave'); busy(btn,true,'저장 중');
+  var cfg={
     provider: $('cfProvider').value,
     apiKey:   $('cfApiKey').value.trim(),
     apiSecret:$('cfApiSecret').value.trim(),
@@ -2495,7 +2622,9 @@ function saveSmsCfg(){
     appUrl:   $('cfAppUrl').value.trim(),
     sendHour: $('cfHour').value,
     notifyPhone: $('cfNotify').value.trim()
-  }}).then(function(r){
+  };
+  if(!$('cfHourPm').disabled && $('cfHourPm').value!=='') cfg.sendHourPm=$('cfHourPm').value;
+  api('sms.saveConfig',{ config:cfg }).then(function(r){
     busy(btn,false);
     SMSLIVE = !!r.live; APPURLSET = !!r.appUrl;
     $('cfApiSecret').value='';
@@ -2503,7 +2632,11 @@ function saveSmsCfg(){
       ? '이미 저장되어 있습니다. 바꿀 때만 새로 입력하세요.' : '아직 저장된 값이 없습니다.';
     showSmsProblems(r.problems||[]);
     applySmsBanner();
-    toast(r.live ? '저장했습니다. 이제 실제로 문자가 발송됩니다.' : '저장했습니다. (테스트 모드)');
+    SMSCFG = r;
+    $('cfAuto').checked = !!r.autoOn; chkTog($('cfAuto'));
+    paintAutoNow(r);
+    toast((r.live ? '저장했습니다. 이제 실제로 문자가 발송됩니다.' : '저장했습니다. (테스트 모드)')+
+          (r.autoText? '\n자동 발송: '+r.autoText : ''));
   }).catch(function(e){ busy(btn,false); toast(e.message,'err'); });
 }
 
@@ -2526,7 +2659,10 @@ function testSmsSend(){
 function toggleAutoSms(input){
   chkTog(input);
   var on = input.checked;
-  api('sms.auto',{ on:on }).then(function(r){ toast(r.msg); })
+  api('sms.auto',{ on:on }).then(function(r){
+      toast(r.msg);
+      if(SMSCFG){ SMSCFG.autoOn=!!r.autoOn; paintAutoNow(SMSCFG); }   // 저장된 시각 기준으로 등록됩니다
+    })
     .catch(function(e){ input.checked=!on; chkTog(input); toast(e.message,'err'); });
 }
 
