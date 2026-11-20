@@ -877,6 +877,7 @@ nav{gap:.3rem}
       </div>
       <div id="uDue"></div>
     </div>
+    <div id="uState"></div>
     <div class="note w hidden" id="uReject"></div>
     <div class="grid g21">
       <div class="card">
@@ -1140,7 +1141,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-20b';
+var BUILD = '2026-11-20c';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -2652,6 +2653,11 @@ function loadMy(){
   $('myBody').innerHTML='<tr><td colspan="6" class="loading"><span class="spin d"></span></td></tr>';
   api('my.list',{}).then(function(r){
     MY=r.list||[]; paintMy(); openPendingCol();
+    // 올리기 화면이 열려 있으면 그 취합의 최신 상태로 맞춥니다 (제출 완료 표시가 바로 바뀌도록)
+    if(CUR){
+      var fresh=MY.filter(function(m){return m.id===CUR.id;})[0];
+      if(fresh){ CUR=fresh; paintUState(); }
+    }
   }).catch(function(e){ $('myBody').innerHTML='<tr><td colspan="6" class="empty">'+esc(e.message)+'</td></tr>'; });
 }
 
@@ -2691,8 +2697,7 @@ function openUpload(id){
   $('uSub').textContent=(CUR.type==='reg'?'정기취합':'수시취합');
   $('uDue').innerHTML='<div class="note '+(CUR.dday<=1?'d':'w')+'" style="margin:0;padding:.45rem .7rem">기한 <b>'+
     esc(CUR.dueAt)+'</b> '+fmtDday(CUR.dday)+'</div>';
-  $('uReject').classList.toggle('hidden', CUR.status!=='redo');
-  if(CUR.status==='redo') $('uReject').innerHTML='<b>재제출 요청</b><br>'+esc(CUR.rejectReason||'');
+  paintUState();
   $('formBody').innerHTML = CUR.formName
     ? '<div class="file"><span class="ic '+icOf(CUR.formName)[0]+'">'+icOf(CUR.formName)[1]+'</span>'+
       '<span class="fn">'+esc(CUR.formName)+'</span></div>'+
@@ -2702,6 +2707,28 @@ function openUpload(id){
     : '<div class="hint">이 취합에는 제공 양식이 없습니다.</div>';
   $('noticeBody').textContent = CUR.notice || '별도 안내 사항이 없습니다.';
   loadMyFiles();
+}
+
+/* 올리기 화면 맨 위에 늘 보이는 제출 상태.
+   업로드 직후의 알림은 몇 초 뒤 사라져서 "제출이 된 건지" 다시 확인할 방법이 없었습니다. */
+function paintUState(){
+  var el=$('uState'); if(!el || !CUR) return;
+  var st=CUR.status, n=Number(CUR.fileCount||0), h='';
+  if(st==='ok' || st==='late'){
+    h='<div class="note o" style="display:flex;align-items:center;gap:.7rem">'+
+      '<span style="font-size:1.3rem;line-height:1">✓</span><div>'+
+      '<b style="font-size:.86rem">제출 완료</b>'+(st==='late'?' <span class="badge b-warn">지연 제출</span>':'')+
+      '<div>파일 '+n+'개'+(CUR.submittedAt?' · 마지막 제출 '+esc(CUR.submittedAt):'')+'</div>'+
+      (CUR.closed?'':'<div style="opacity:.8">마감 전까지 파일을 더 올리거나 바꿀 수 있습니다.</div>')+
+      '</div></div>';
+  } else if(st==='redo'){
+    h='<div class="note w"><b style="font-size:.86rem">재제출 필요</b> — 아래 사유를 확인하고 다시 올려 주세요. 올리면 제출 완료로 바뀝니다.</div>';
+  } else {
+    h='<div class="note i"><b style="font-size:.86rem">아직 제출 전입니다</b> — 파일을 1개 이상 올리면 제출 완료로 처리됩니다.</div>';
+  }
+  el.innerHTML=h;
+  $('uReject').classList.toggle('hidden', st!=='redo');
+  if(st==='redo') $('uReject').innerHTML='<b>재제출 요청</b><br>'+esc(CUR.rejectReason||'');
 }
 
 function loadMyFiles(){
@@ -2717,7 +2744,7 @@ function loadMyFiles(){
 }
 function delMyFile(id){
   if(!confirm('이 파일을 지울까요?')) return;
-  api('my.deleteFile',{fileId:id}).then(function(){ toast('삭제했습니다.'); loadMyFiles(); })
+  api('my.deleteFile',{fileId:id}).then(function(){ toast('삭제했습니다.'); loadMyFiles(); loadMy(); })
     .catch(function(e){ toast(e.message,'err'); });
 }
 
