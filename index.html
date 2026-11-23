@@ -740,7 +740,7 @@ nav{gap:.3rem}
         <button class="btn pri" style="margin-left:auto" onclick="openHq(null)">+ 담당자 추가</button>
       </div>
       <div class="tbl-wrap">
-        <table><thead><tr><th style="width:20%">아이디</th><th>이름</th><th>비밀번호</th><th>상태</th><th style="width:38%"></th></tr></thead>
+        <table><thead><tr><th style="width:20%">아이디</th><th>이름 · 연락처</th><th>비밀번호</th><th>상태</th><th style="width:38%"></th></tr></thead>
         <tbody id="hqBody"></tbody></table>
       </div>
       <div class="hint">이름을 넣으면 대시보드와 취합관리의 '만든 사람'에 아이디 대신 이름이 표시됩니다. 아이디는 대소문자를 구분합니다. 비밀번호는 저장할 때 암호화되며 다시 볼 수 없습니다. 잊었으면 새로 설정해 주세요.</div>
@@ -1043,6 +1043,13 @@ nav{gap:.3rem}
         <input type="text" id="hnName" placeholder="예) 홍길동" maxlength="20" autocomplete="off"
                onkeydown="if(event.key==='Enter')saveHqName()">
         <div class="hint">대시보드와 취합관리의 '만든 사람'에 아이디 대신 표시됩니다. 이미 만든 취합에도 바로 반영됩니다. 비우면 아이디가 표시됩니다.</div></div>
+      <div class="field"><label>메일 주소</label>
+        <input type="email" id="hnEmail" placeholder="예) hong@i-chm.co.kr" maxlength="80" autocomplete="off">
+        <div class="hint">이 담당자가 만든 취합이 <b>전원 제출 완료</b>되면 정리 파일(엑셀)과 전체 자료(ZIP)를 이 주소로 보냅니다.</div></div>
+      <div class="field"><label>휴대폰 번호</label>
+        <input type="text" id="hnPhone" placeholder="010-1234-5678" maxlength="13" autocomplete="off"
+               onkeydown="if(event.key==='Enter')saveHqName()">
+        <div class="hint">취합 완료 문자를 받을 번호입니다. 비우면 문자 발송 설정의 '완료 알림 받을 번호'로 보냅니다.</div></div>
     </div>
     <div class="modal-f"><button class="btn" onclick="closeOv('ovHqName')">취소</button>
       <button class="btn pri" id="hnSave" onclick="saveHqName()">저장</button></div>
@@ -1197,7 +1204,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-23a';
+var BUILD = '2026-11-23b';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1813,6 +1820,7 @@ function renderDetail(){
   $('dSub').innerHTML = (d.type==='reg'?'정기취합':'수시취합') + ' · 기한 ' + esc(d.dueAt) +
     ' ' + fmtDday(d.dday) + ' · 대상 <b>' + esc(d.targetSummary||'') + '</b>' +
     (d.createdBy? ' · 만든 사람 <b>'+esc(d.createdByName||d.createdBy)+'</b>':'') +
+    pkgLine(d.pkg) +
     (d.canDownload? '' :
       '<div class="note w" style="margin:.6rem 0 0;padding:.5rem .7rem;display:inline-block">'+
       '다른 담당자가 만든 취합입니다. 진행 상황은 볼 수 있지만 <b>자료 다운로드와 문자 발송은 만든 사람과 마스터만</b> 할 수 있습니다.</div>');
@@ -1822,6 +1830,7 @@ function renderDetail(){
     ? (shareBtn + (d.mergeOn? '<button class="btn" id="btnMerge" onclick="runMerge()">📊 엑셀 병합</button>':'') +
        '<button class="btn" onclick="downloadCsv()">현황표</button>' +
        '<button class="btn" id="btnZip" onclick="runZip()">🗂 ZIP 다운로드</button>' +
+       '<button class="btn" id="btnPkg" onclick="runPkg()">📧 취합본 메일</button>' +
        '<button class="btn" onclick="openEdit()">📅 일정 수정</button>' +
        '<button class="btn pri" onclick="gotoSmsFor()">✉ 미제출 문자발송</button>' +
        '<button class="btn dan" onclick="delCol()">삭제</button>')
@@ -2015,6 +2024,27 @@ function runZip(){
     busy(b,false); dlGo(w, dlUrl(r.url,'file'));
     toast(r.fileCount+'개 파일 · '+r.sizeMb+'MB 압축 완료 — 다운로드 폴더를 확인하세요','ok');
   }).catch(function(e){ busy(b,false); try{ if(w) w.close(); }catch(x){} toast(e.message,'err'); });
+}
+
+/* 취합 완료 메일 — 정리 파일(엑셀) + 전체 자료 ZIP 을 담당자 메일로 */
+function pkgLine(p){
+  if(!p || !p.state) return '';
+  var t = {Q:'취합본 메일 준비 중', RUN:'취합본 메일 만드는 중', DONE:'취합본 메일 발송', ERR:'취합본 메일 실패'}[p.state] || '';
+  if(!t) return '';
+  var cls = p.state==='ERR' ? 'b-dan' : (p.state==='DONE' ? 'b-ok' : 'b-warn');
+  return '<div style="margin-top:.5rem"><span class="badge '+cls+'">'+t+'</span> <span class="sub">'+
+    esc(p.at||'')+(p.msg? ' · '+esc(p.msg) : '')+'</span></div>';
+}
+function runPkg(){
+  var c=(DETAIL.counts||{});
+  var all = c.total && c.done>=c.total;
+  var msg = (all? '' : '아직 제출하지 않은 사업장이 있습니다. 지금까지 제출된 자료만 보냅니다.\n\n') +
+    '정리 파일(엑셀)과 전체 자료(ZIP)를 만들어 내 메일로 보내고, 문자로 알려드립니다.\n몇 분 정도 걸립니다. 보낼까요?';
+  if(!confirm(msg)) return;
+  var b=$('btnPkg'); busy(b,true,'요청 중');
+  api('complete.send',{id:DETAIL.id}).then(function(r){
+    busy(b,false); toast(r.msg||'메일로 보냅니다.','ok');
+  }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
 }
 
 function downloadCsv(){
@@ -2812,12 +2842,14 @@ function loadHq(){
       return '<tr'+(u.me?' style="background:var(--accent-light)"':'')+'>'+
         '<td><b>'+esc(u.id)+'</b>'+(u.me?' <span class="badge b-acc">나</span>':'')+
           (u.master?' <span class="badge b-warn">마스터</span>':'')+'</td>'+
-        '<td>'+(u.name? esc(u.name) : '<span class="sub">미입력</span>')+'</td>'+
+        '<td>'+(u.name? esc(u.name) : '<span class="sub">미입력</span>')+
+          '<div class="sub" style="font-size:.78rem">'+(u.email? esc(u.email) : '메일 미입력')+
+          (u.phone? ' · '+esc(u.phone) : '')+'</div></td>'+
         '<td class="sub">'+(u.empty? '<span class="badge b-dan">설정 안 됨</span>'
                           : (u.hashed? '암호화되어 저장됨' : '<span class="badge b-warn">예전 방식</span>'))+'</td>'+
         '<td>'+(u.empty? '<span class="badge b-dan">로그인 불가</span>':'<span class="badge b-ok">사용</span>')+'</td>'+
         '<td><div class="btn-row">'+
-          '<button class="btn sm" onclick="openHqName(\''+esc(u.id)+'\')">이름</button>'+
+          '<button class="btn sm" onclick="openHqName(\''+esc(u.id)+'\')">이름·연락처</button>'+
           '<button class="btn sm" onclick="openHq(\''+esc(u.id)+'\')">비밀번호 변경</button>'+
           (u.me? '' : '<button class="btn sm" onclick="toggleMaster(\''+esc(u.id)+'\','+(u.master?'false':'true')+')">'+
                       (u.master?'마스터 해제':'마스터 지정')+'</button>'+
@@ -2867,14 +2899,18 @@ var hnId=null;
 function openHqName(id){
   hnId=id;
   var u=HQUSERS.filter(function(x){return x.id===id;})[0]||{};
-  $('hnTitle').textContent='이름 — '+id;
+  $('hnTitle').textContent='이름 · 연락처 — '+id;
   $('hnName').value=u.name||'';
+  $('hnEmail').value=u.email||''; $('hnPhone').value=u.phone||'';
   openOv('ovHqName');
   setTimeout(function(){ $('hnName').focus(); },100);
 }
 function saveHqName(){
   var b=$('hnSave'); busy(b,true,'저장 중');
-  api('hq.name',{userId:hnId,name:$('hnName').value.trim()}).then(function(r){
+  var em=$('hnEmail').value.trim(), ph=$('hnPhone').value.trim();
+  api('hq.name',{userId:hnId,name:$('hnName').value.trim()}).then(function(){
+    return api('hq.contact',{userId:hnId,email:em,phone:ph});
+  }).then(function(r){
     busy(b,false); closeOv('ovHqName'); toast(r.msg||'저장했습니다.','ok'); loadHq();
   }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
 }
