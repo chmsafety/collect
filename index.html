@@ -1197,7 +1197,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-20g';
+var BUILD = '2026-11-23a';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1966,12 +1966,55 @@ function showFiles(code){
   openOv('ovFiles');
 }
 
+/* ── 바로 내려받기 ─────────────────────────────────────────────
+   서버가 돌려주는 주소는 Drive '보기' 화면이라, 열어도 파일이 내려받아지지 않습니다.
+   주소에서 파일 ID 를 뽑아 곧바로 내려받는 주소로 바꿉니다. */
+function driveId(u){
+  var m = /\/d\/([\w-]{20,})/.exec(u||'') || /[?&]id=([\w-]{20,})/.exec(u||'');
+  return m ? m[1] : '';
+}
+function dlUrl(u, kind){
+  var id = driveId(u); if(!id) return u;
+  return kind==='sheet'
+    ? 'https://docs.google.com/spreadsheets/d/'+id+'/export?format=xlsx'
+    : 'https://drive.google.com/uc?export=download&id='+id;
+}
+/* 버튼을 누른 그 순간에 창을 미리 열어 둡니다 — 서버 응답을 기다린 뒤에 열면
+   브라우저가 팝업으로 보고 막아서 아무 일도 일어나지 않습니다. */
+function dlTab(msg){
+  var w=null;
+  try{
+    w = window.open('', '_blank');
+    if(w){
+      w.document.write('<!doctype html><meta charset="utf-8"><title>내려받기</title>'+
+        '<body style="font-family:sans-serif;padding:2.5rem;color:#1e293b">'+
+        '<h3 id="m">'+esc(msg)+'</h3><p id="s" style="color:#64748b">이 창을 닫지 말고 잠시만 기다려 주세요.</p>');
+      w.document.close();
+    }
+  }catch(e){}
+  return w;
+}
+function dlGo(w, url){
+  if(!w || w.closed){ location.href = url; return; }   // 팝업이 막혔으면 이 창에서 받습니다
+  try{
+    w.document.getElementById('m').textContent = '내려받기를 시작합니다';
+    w.document.getElementById('s').textContent = '파일은 다운로드 폴더에 저장됩니다. 이 창은 곧 닫힙니다.';
+  }catch(e){}
+  w.location.href = url;
+  // 내려받기가 시작되면 이 창은 그대로 남으므로 닫습니다.
+  // 권한 오류 화면으로 넘어갔다면 (다른 사이트라 읽을 수 없어) 닫지 않고 그대로 보여줍니다.
+  setTimeout(function(){
+    try{ if(w.document && w.document.getElementById('m')) w.close(); }catch(e){}
+  }, 6000);
+}
+
 function runZip(){
   var b=$('btnZip'); busy(b,true,'압축 중');
+  var w = dlTab('ZIP 파일을 만드는 중입니다…');
   api('zip.build',{id:DETAIL.id,opts:{folderPerSite:true,includeStatus:true}}).then(function(r){
-    busy(b,false); window.open(r.url,'_blank');
-    toast(r.fileCount+'개 파일 · '+r.sizeMb+'MB 압축 완료','ok');
-  }).catch(function(e){ busy(b,false); toast(e.message,'err'); });
+    busy(b,false); dlGo(w, dlUrl(r.url,'file'));
+    toast(r.fileCount+'개 파일 · '+r.sizeMb+'MB 압축 완료 — 다운로드 폴더를 확인하세요','ok');
+  }).catch(function(e){ busy(b,false); try{ if(w) w.close(); }catch(x){} toast(e.message,'err'); });
 }
 
 function downloadCsv(){
@@ -1994,7 +2037,12 @@ function runMerge(){
         tile('o','병합 성공',r.okCount,'곳','총 '+r.rowCount+'행')+
         tile('d','병합 실패',r.errorCount,'곳','양식 불일치')+
         tile('','미제출',r.missingCount,'곳','병합 대상 아님')+
-        tile('','결과',' ','','<a class="btn pri sm" target="_blank" rel="noopener" href="'+esc(r.url)+'">병합 시트 열기</a>')+
+        tile('','결과',r.rowCount,'행','아래에서 내려받기')+
+      '</div>'+
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem">'+
+        '<a class="btn pri" target="_blank" rel="noopener" href="'+esc(dlUrl(r.url,'sheet'))+'">⬇ 엑셀로 내려받기</a>'+
+        '<a class="btn" target="_blank" rel="noopener" href="'+esc(r.url)+'">병합 시트 열기</a>'+
+        '<span class="hint">"액세스 권한 필요"가 뜨면 브라우저의 Google 계정이 자료 폴더에 공유되어 있지 않은 것입니다.</span>'+
       '</div>'+
       (r.errorCount? '<div class="card-t">병합 실패 목록</div><div class="tbl-wrap" style="margin-bottom:1rem">'+
         '<table><thead><tr><th>사업장</th><th>파일</th><th>사유</th><th>상세</th><th></th></tr></thead><tbody>'+
