@@ -1204,7 +1204,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbyHh_2iPELRL-iH3G6MRuT_mB
 
 /* 이 파일의 버전. 화면이 예전 것처럼 보이면 브라우저가 옛 파일을 들고 있는 것입니다.
    Ctrl+Shift+R 로 강력 새로고침하세요. 콘솔에서 이 값으로 확인할 수 있습니다. */
-var BUILD = '2026-11-23b';
+var BUILD = '2026-11-23c';
 try { console.log('취합관리 시스템 build ' + BUILD); } catch(e){}
 
 /* ── 공용 ─────────────────────────────────────────────────────── */
@@ -1827,7 +1827,7 @@ function renderDetail(){
 
   var shareBtn = '<button class="btn" onclick="openShare(DETAIL.id, DETAIL.name, DETAIL.dueAt, DETAIL.notice)">🔗 공유 링크</button>';
   $('dActions').innerHTML = d.canDownload
-    ? (shareBtn + (d.mergeOn? '<button class="btn" id="btnMerge" onclick="runMerge()">📊 엑셀 병합</button>':'') +
+    ? (shareBtn + '<button class="btn" id="btnMerge" onclick="runMerge()">📊 엑셀 병합</button>' +
        '<button class="btn" onclick="downloadCsv()">현황표</button>' +
        '<button class="btn" id="btnZip" onclick="runZip()">🗂 ZIP 다운로드</button>' +
        '<button class="btn" id="btnPkg" onclick="runPkg()">📧 취합본 메일</button>' +
@@ -2062,19 +2062,28 @@ function runMerge(){
   var b=$('btnMerge'); busy(b,true,'병합 중');
   api('merge.run',{id:DETAIL.id}).then(function(r){
     busy(b,false);
+    var sheets = r.mode==='sheets';
     $('mgBody').innerHTML =
       '<div class="grid g4" style="margin-bottom:1rem">'+
-        tile('o','병합 성공',r.okCount,'곳','총 '+r.rowCount+'행')+
-        tile('d','병합 실패',r.errorCount,'곳','양식 불일치')+
-        tile('','미제출',r.missingCount,'곳','병합 대상 아님')+
-        tile('','결과',r.rowCount,'행','아래에서 내려받기')+
+        (sheets
+          ? tile('o','병합 성공',r.okCount,'곳','사업장 시트 '+r.sheetCount+'개')+
+            tile('d','확인 필요',r.errorCount,'건','아래 목록 참고')+
+            tile('','미제출',r.missingCount,'곳','병합 대상 아님')+
+            tile('','취합정리 시트',r.hasSummary?'있음':'없음','',r.hasSummary?'맨 앞 시트':'양식 파일 없음')
+          : tile('o','병합 성공',r.okCount,'곳','총 '+r.rowCount+'행')+
+            tile('d','병합 실패',r.errorCount,'곳','양식 불일치')+
+            tile('','미제출',r.missingCount,'곳','병합 대상 아님')+
+            tile('','결과',r.rowCount,'행','아래에서 내려받기'))+
       '</div>'+
+      (sheets? '<div class="note" style="margin-bottom:1rem">엑셀 한 개에 <b>사업장마다 시트를 하나씩</b> 만들어 합쳤습니다.'+
+        (r.hasSummary? ' 맨 앞 <b>취합정리</b> 시트에는 사업장별 입력값이 한 표로 정리되어 있습니다.':'')+
+        (r.plainCount? ' (시트 '+r.plainCount+'개는 시간 관계로 서식 없이 값만 옮겼습니다.)':'')+'</div>' : '')+
       '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem">'+
         '<a class="btn pri" target="_blank" rel="noopener" href="'+esc(dlUrl(r.url,'sheet'))+'">⬇ 엑셀로 내려받기</a>'+
-        '<a class="btn" target="_blank" rel="noopener" href="'+esc(r.url)+'">병합 시트 열기</a>'+
+        '<a class="btn" target="_blank" rel="noopener" href="'+esc(r.url)+'">구글 시트로 열기</a>'+
         '<span class="hint">"액세스 권한 필요"가 뜨면 브라우저의 Google 계정이 자료 폴더에 공유되어 있지 않은 것입니다.</span>'+
       '</div>'+
-      (r.errorCount? '<div class="card-t">병합 실패 목록</div><div class="tbl-wrap" style="margin-bottom:1rem">'+
+      (r.errorCount? '<div class="card-t">'+(sheets?'확인이 필요한 파일':'병합 실패 목록')+'</div><div class="tbl-wrap" style="margin-bottom:1rem">'+
         '<table><thead><tr><th>사업장</th><th>파일</th><th>사유</th><th>상세</th><th></th></tr></thead><tbody>'+
         r.errors.map(function(e){
           return '<tr><td>'+esc(e.site)+'</td><td class="sub">'+esc(e.file)+'</td>'+
@@ -2082,7 +2091,7 @@ function runMerge(){
             '<td class="sub">'+esc(e.detail)+'</td>'+
             '<td><button class="btn sm" onclick="closeOv(\'ovMerge\');openRedoByName(\''+esc(e.site)+'\')">재제출 요청</button></td></tr>';
         }).join('')+'</tbody></table></div>' : '<div class="note o">모든 엑셀이 정상적으로 병합되었습니다.</div>')+
-      '<div class="card-t">병합 결과 미리보기</div><div class="tbl-wrap"><table><tbody>'+
+      '<div class="card-t">'+(sheets? '첫 시트 미리보기 — '+esc(r.previewName||'') : '병합 결과 미리보기')+'</div><div class="tbl-wrap"><table><tbody>'+
         r.preview.map(function(row,i){
           return '<tr>'+row.map(function(v){
             return i===0? '<th>'+esc(v)+'</th>' : '<td>'+esc(v)+'</td>'; }).join('')+'</tr>';
